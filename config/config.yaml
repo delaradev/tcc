@@ -6,10 +6,10 @@ project:
 
 # Data Configuration
 data:
+  path: "data/"
   raw_path: "data/raw"
-  processed_path: "data/processed"
   tiles_path: "data/tiles"
-  dataset_path: "data/dataset_balanced"
+  dataset_path: "data/dataset"
   tile_size: 512
   overlap: 32
   val_split: 0.1

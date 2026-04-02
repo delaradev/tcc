@@ -4,12 +4,12 @@ import yaml
 import json
 from datetime import datetime
 
-from models.unet import build_unet
-from models.losses import tversky_loss
-from training.metrics import iou_score, dice_score, precision_score, recall_score
-from training.callbacks import PredictionSaver, GPUMemoryMonitor
-from utils.dataset_builder import CPICDataset
-from utils.gpu_utils import configure_gpu, get_gpu_info
+from src.models.unet import build_unet
+from src.models.losses import tversky_loss
+from src.training.metrics import iou_score, dice_score, precision_score, recall_score
+from src.training.callbacks import PredictionSaver, GPUMemoryMonitor
+from src.dataset_builder import CPICDataset
+from src.utils.gpu_utils import configure_gpu, get_gpu_info
 
 
 class Trainer:
