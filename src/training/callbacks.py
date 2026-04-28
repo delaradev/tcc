@@ -1,12 +1,9 @@
-"""Callbacks personalizados para treinamento"""
 import tensorflow as tf
 from pathlib import Path
 import numpy as np
 
 
 class PredictionSaver(tf.keras.callbacks.Callback):
-    """Salva previsões durante o treinamento"""
-
     def __init__(self, validation_ds, save_dir: str, max_samples: int = 4, threshold: float = 0.5):
         super().__init__()
         self.validation_ds = validation_ds
@@ -19,30 +16,18 @@ class PredictionSaver(tf.keras.callbacks.Callback):
         epoch_dir = self.save_dir / f'epoch_{epoch+1:03d}'
         epoch_dir.mkdir(exist_ok=True)
 
-        # Pegar algumas amostras
         for i, (images, masks) in enumerate(self.validation_ds.take(1)):
             predictions = self.model.predict(images, verbose=0)
 
             for j in range(min(self.max_samples, len(images))):
-                # Salvar imagem original
-                self._save_image(
-                    images[j],
-                    epoch_dir / f'sample_{j}_image.png'
-                )
-
-                # Salvar máscara verdadeira
-                self._save_mask(
-                    masks[j],
-                    epoch_dir / f'sample_{j}_true_mask.png'
-                )
-
-                # Salvar previsão
+                self._save_image(images[j], epoch_dir /
+                                 f'sample_{j}_image.png')
+                self._save_mask(masks[j], epoch_dir /
+                                f'sample_{j}_true_mask.png')
                 pred_mask = (predictions[j] >=
                              self.threshold).astype(np.float32)
-                self._save_mask(
-                    pred_mask,
-                    epoch_dir / f'sample_{j}_pred_mask.png'
-                )
+                self._save_mask(pred_mask, epoch_dir /
+                                f'sample_{j}_pred_mask.png')
 
     def _save_image(self, image, path):
         from PIL import Image
@@ -56,8 +41,6 @@ class PredictionSaver(tf.keras.callbacks.Callback):
 
 
 class GPUMemoryMonitor(tf.keras.callbacks.Callback):
-    """Monitora uso de memória da GPU"""
-
     def on_epoch_end(self, epoch, logs=None):
         import subprocess
         try:

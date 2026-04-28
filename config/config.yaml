@@ -1,50 +1,77 @@
+# ============================================================================
+# CPIC BRAZIL - CONFIGURATION FILE
+# ============================================================================
+# Based on Liu et al. (2023) - ISPRS Journal of Photogrammetry
+# ============================================================================
+
+# ----------------------------------------------------------------------------
 # Project Configuration
+# ----------------------------------------------------------------------------
 project:
   name: "CPIC_Brazil"
-  version: "1.0"
+  version: "2.0.0"
   seed: 42
+  description: "Center Pivot Irrigation Cropland mapping for Brazil"
 
+# ----------------------------------------------------------------------------
 # Data Configuration
+# ----------------------------------------------------------------------------
 data:
-  path: "data/"
-  raw_path: "data/raw"
-  tiles_path: "data/tiles"
-  dataset_path: "data/dataset"
+  # Paths (relative to project root)
+  raw_path: "data/raw" # Raw compressed files
+  dataset_path: "data/dataset" # Original extracted dataset
+  balanced_path: "data/dataset_balanced" # Balanced dataset (created)
+  tiles_path: "data/tiles" # Generated tiles (optional)
+  logs_path: "logs"
+
+  # Tile generation parameters
   tile_size: 512
   overlap: 32
-  val_split: 0.1
-  min_fg_ratio: 0.003
-  desired_pos_ratio: 0.7
 
-# Model Configuration
+  # Dataset balancing parameters
+  val_split: 0.1
+  min_fg_ratio: 0.003 # 0.3% minimum foreground
+  desired_pos_ratio: 0.7 # 70% positive samples
+
+# ----------------------------------------------------------------------------
+# Model Configuration (U-Net architecture)
+# ----------------------------------------------------------------------------
 model:
   img_size: 512
   unet_base_filters: 16
   input_channels: 3
   output_channels: 1
 
+# ----------------------------------------------------------------------------
 # Training Configuration
+# ----------------------------------------------------------------------------
 training:
   batch_size: 1
-  epochs: 50
+  epochs: 100
   learning_rate: 0.0001
   optimizer: "rmsprop"
+
   loss:
     name: "tversky"
     alpha: 0.7
     beta: 0.3
+
   early_stopping_patience: 15
   reduce_lr_patience: 5
-  randommix: true
+  randommix: false
   randommix_prob: 1.0
 
+# ----------------------------------------------------------------------------
 # GPU Configuration
+# ----------------------------------------------------------------------------
 gpu:
   memory_growth: true
   mixed_precision: true
   memory_limit_mb: 3072
 
+# ----------------------------------------------------------------------------
 # Logging Configuration
+# ----------------------------------------------------------------------------
 logging:
   log_dir: "logs"
   checkpoint_dir: "checkpoints"

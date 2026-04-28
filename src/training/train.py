@@ -1,22 +1,24 @@
-import tensorflow as tf
-from pathlib import Path
-import yaml
 import json
+import yaml
 from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+import tensorflow as tf
 
 from src.models.unet import build_unet
 from src.models.losses import tversky_loss
 from src.training.metrics import iou_score, dice_score, precision_score, recall_score
 from src.training.callbacks import PredictionSaver, GPUMemoryMonitor
-from src.dataset_builder import CPICDataset
+from src.data.dataset_balancer import CPICDatasetBuilder
 from src.utils.gpu_utils import configure_gpu, get_gpu_info
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class Trainer:
-    """Classe principal para treinamento"""
-
     def __init__(self, config_path: str):
-        """Inicializa treinador com configurações"""
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
 
@@ -24,7 +26,6 @@ class Trainer:
         self.output_dir = Path('runs') / self.run_name
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Configurar GPU
         gpu_config = self.config['gpu']
         configure_gpu(
             memory_growth=gpu_config['memory_growth'],
@@ -32,67 +33,56 @@ class Trainer:
             mixed_precision=gpu_config['mixed_precision']
         )
 
-        print(f"Run: {self.run_name}")
-        print(f"GPU Info: {get_gpu_info()}")
+        logger.info(f"Run: {self.run_name}")
+        logger.info(f"GPU: {get_gpu_info()}")
+        self.resume_from: Optional[str] = None
 
     def prepare_data(self):
-        """Prepara datasets de treino e validação"""
         data_config = self.config['data']
         model_config = self.config['model']
 
-        dataset = CPICDataset(
-            data_config['dataset_path'], model_config['img_size'])
-
-        # Carregar pares
-        train_pairs = dataset.load_pairs('train')
-        val_pairs = dataset.load_pairs('val')
-
-        print(f"Dados: treino={len(train_pairs)}, val={len(val_pairs)}")
-
-        # Criar datasets
-        self.train_ds = dataset.create_dataset(
-            train_pairs,
-            batch_size=self.config['training']['batch_size'],
-            training=True,
-            randommix=self.config['training']['randommix'],
-            randommix_prob=self.config['training']['randommix_prob']
+        self.dataset_builder = CPICDatasetBuilder(
+            dataset_path=data_config['balanced_path'],
+            image_size=model_config['img_size'],
+            seed=self.config['project']['seed']
         )
 
-        self.val_ds = dataset.create_dataset(
-            val_pairs,
-            batch_size=self.config['training']['batch_size'],
-            training=False,
-            randommix=False
-        )
+        train_pairs = self.dataset_builder.load_pairs('train')
+        val_pairs = self.dataset_builder.load_pairs('valid')
+        logger.info(
+            f"Train pairs: {len(train_pairs)}, Val pairs: {len(val_pairs)}")
 
-        # Guardar uma amostra para visualização
+        self.train_ds = self.dataset_builder.build_dataset(
+            split='train',
+            batch_size=self.config['training']['batch_size'],
+            training=True
+        )
+        self.val_ds = self.dataset_builder.build_dataset(
+            split='valid',
+            batch_size=self.config['training']['batch_size'],
+            training=False
+        )
         self.sample_ds = self.val_ds.take(1)
 
     def build_model(self):
-        """Constrói o modelo U-Net"""
         model_config = self.config['model']
-
         self.model = build_unet(
-            input_shape=(model_config['img_size'],
-                         model_config['img_size'],
-                         model_config['input_channels']),
+            input_shape=(
+                model_config['img_size'],
+                model_config['img_size'],
+                model_config['input_channels']
+            ),
             base_filters=model_config['unet_base_filters']
         )
-
-        print(self.model.summary())
+        logger.info(self.model.summary())
 
     def compile_model(self):
-        """Compila o modelo com loss e métricas"""
         train_config = self.config['training']
         loss_config = train_config['loss']
 
-        # Loss
         loss_fn = tversky_loss(
-            alpha=loss_config['alpha'],
-            beta=loss_config['beta']
-        )
+            alpha=loss_config['alpha'], beta=loss_config['beta'])
 
-        # Métricas
         metrics = [
             iou_score(),
             dice_score(),
@@ -100,7 +90,6 @@ class Trainer:
             recall_score()
         ]
 
-        # Otimizador
         if train_config['optimizer'] == 'rmsprop':
             optimizer = tf.keras.optimizers.RMSprop(
                 learning_rate=train_config['learning_rate'])
@@ -108,68 +97,44 @@ class Trainer:
             optimizer = tf.keras.optimizers.Adam(
                 learning_rate=train_config['learning_rate'])
 
-        self.model.compile(
-            optimizer=optimizer,
-            loss=loss_fn,
-            metrics=metrics
-        )
+        self.model.compile(optimizer=optimizer, loss=loss_fn, metrics=metrics)
 
     def setup_callbacks(self):
-        """Configura callbacks"""
         train_config = self.config['training']
 
-        callbacks = []
-
-        # Checkpoint
-        callbacks.append(tf.keras.callbacks.ModelCheckpoint(
-            str(self.output_dir / 'best_model.keras'),
-            monitor='val_iou_score',
-            mode='max',
-            save_best_only=True
-        ))
-
-        # Early stopping
-        callbacks.append(tf.keras.callbacks.EarlyStopping(
-            monitor='val_loss',
-            patience=train_config['early_stopping_patience'],
-            restore_best_weights=True
-        ))
-
-        # Reduce LR on plateau
-        callbacks.append(tf.keras.callbacks.ReduceLROnPlateau(
-            monitor='val_loss',
-            factor=0.5,
-            patience=train_config['reduce_lr_patience'],
-            min_lr=1e-7
-        ))
-
-        # TensorBoard
-        callbacks.append(tf.keras.callbacks.TensorBoard(
-            log_dir=self.output_dir / 'tensorboard'
-        ))
-
-        # Predição samples
-        callbacks.append(PredictionSaver(
-            self.sample_ds,
-            str(self.output_dir / 'predictions'),
-            max_samples=4
-        ))
-
-        # Monitor GPU
-        callbacks.append(GPUMemoryMonitor())
-
+        callbacks = [
+            tf.keras.callbacks.ModelCheckpoint(
+                str(self.output_dir / 'best_model.keras'),
+                monitor='val_iou_score',
+                mode='max',
+                save_best_only=True
+            ),
+            tf.keras.callbacks.EarlyStopping(
+                monitor='val_loss',
+                patience=train_config['early_stopping_patience'],
+                restore_best_weights=True
+            ),
+            tf.keras.callbacks.ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.5,
+                patience=train_config['reduce_lr_patience'],
+                min_lr=1e-7
+            ),
+            tf.keras.callbacks.TensorBoard(
+                log_dir=self.output_dir / 'tensorboard'),
+            PredictionSaver(self.sample_ds, str(
+                self.output_dir / 'predictions'), max_samples=4),
+            GPUMemoryMonitor()
+        ]
         self.callbacks = callbacks
 
     def train(self):
-        """Executa treinamento"""
         train_config = self.config['training']
 
-        # Salvar configuração
         with open(self.output_dir / 'config.yaml', 'w') as f:
             yaml.dump(self.config, f)
 
-        print("\nIniciando treinamento...")
-
+        logger.info("Starting training")
         history = self.model.fit(
             self.train_ds,
             validation_data=self.val_ds,
@@ -178,15 +143,12 @@ class Trainer:
             verbose=1
         )
 
-        # Salvar histórico
         with open(self.output_dir / 'history.json', 'w') as f:
             json.dump(history.history, f, indent=2)
 
-        print(
-            f"\nTreinamento concluído! Modelos salvos em: {self.output_dir}")
+        logger.info(f"Training completed. Model saved in {self.output_dir}")
 
     def run(self):
-        """Executa pipeline completa"""
         self.prepare_data()
         self.build_model()
         self.compile_model()
