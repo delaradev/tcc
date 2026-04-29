@@ -31,12 +31,23 @@ class PredictionSaver(tf.keras.callbacks.Callback):
 
     def _save_image(self, image, path):
         from PIL import Image
-        img = (image.numpy() * 255).astype(np.uint8)
+        if hasattr(image, 'numpy'):
+            img = (image.numpy() * 255).astype(np.uint8)
+        else:
+            img = (image * 255).astype(np.uint8)
         Image.fromarray(img).save(path)
 
     def _save_mask(self, mask, path):
         from PIL import Image
-        msk = (mask.squeeze() * 255).astype(np.uint8)
+        if hasattr(mask, 'numpy'):
+            msk = mask.numpy()
+        else:
+            msk = mask
+        if msk.ndim == 3 and msk.shape[-1] == 1:
+            msk = msk.squeeze(axis=-1)
+        elif msk.ndim == 3 and msk.shape[0] == 1:
+            msk = msk.squeeze(axis=0)
+        msk = (msk * 255).astype(np.uint8)
         Image.fromarray(msk).save(path)
 
 
