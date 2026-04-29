@@ -41,10 +41,13 @@ class Trainer:
         data_config = self.config['data']
         model_config = self.config['model']
 
+        max_samples = data_config.get('max_train_samples', None)
+
         self.dataset_builder = CPICDatasetBuilder(
             dataset_path=data_config['balanced_path'],
             image_size=model_config['img_size'],
-            seed=self.config['project']['seed']
+            seed=self.config['project']['seed'],
+            max_train_samples=max_samples
         )
 
         train_pairs = self.dataset_builder.load_pairs('train')
@@ -124,7 +127,6 @@ class Trainer:
                 log_dir=self.output_dir / 'tensorboard'),
             PredictionSaver(self.sample_ds, str(
                 self.output_dir / 'predictions'), max_samples=4),
-            GPUMemoryMonitor()
         ]
         self.callbacks = callbacks
 

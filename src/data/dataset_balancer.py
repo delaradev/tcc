@@ -156,7 +156,8 @@ def create_balanced_dataset(
 
 
 class CPICDatasetBuilder:
-    def __init__(self, dataset_path: str, image_size: int = 512, seed: int = 42):
+    def __init__(self, dataset_path: str, image_size: int = 512, seed: int = 42, max_train_samples: int = None):
+        self.max_train_samples = max_train_samples
         self.dataset_path = Path(dataset_path)
         self.image_size = image_size
         self.seed = seed
@@ -177,6 +178,11 @@ class CPICDatasetBuilder:
             img_path = img_dir / mask_path.name
             if img_path.exists():
                 pairs.append((str(img_path), str(mask_path)))
+
+        if split == 'train' and self.max_train_samples is not None and len(pairs) > self.max_train_samples:
+            rng = random.Random(self.seed)
+            pairs = rng.sample(pairs, self.max_train_samples)
+
         return pairs
 
     def _load_and_preprocess(self, image_path, mask_path, training=False):

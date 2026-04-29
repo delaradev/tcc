@@ -6,26 +6,27 @@ project:
 data:
   raw_path: data/raw
   dataset_path: data/dataset
-  balanced_path: data/dataset_balanced
+  balanced_path: data/dataset
   tiles_path: data/tiles
-  tile_size: 512
-  overlap: 32
+  tile_size: 256
+  overlap: 16
   min_fg_ratio: 0.003
   desired_pos_ratio: 0.7
+  max_train_samples: 20000
 
 model:
-  img_size: 512
+  img_size: 256
   unet_base_filters: 16
   input_channels: 3
   output_channels: 1
 
 training:
-  batch_size: 1
-  epochs: 100
-  learning_rate: 0.0001
-  optimizer: rmsprop
-  early_stopping_patience: 15
-  reduce_lr_patience: 5
+  batch_size: 16
+  epochs: 15
+  learning_rate: 0.001
+  optimizer: adam
+  early_stopping_patience: 4
+  reduce_lr_patience: 3
   loss:
     name: tversky
     alpha: 0.7
