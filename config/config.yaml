@@ -1,6 +1,6 @@
 project:
-  name: CPIC_Brazil
-  version: 2.0.0
+  name: CPIC_Brazil_512_2h
+  version: 3.0.0
   seed: 42
 
 data:
@@ -8,25 +8,25 @@ data:
   dataset_path: data/dataset
   balanced_path: data/dataset
   tiles_path: data/tiles
-  tile_size: 384
-  overlap: 32
+  tile_size: 512
+  overlap: 64
   min_fg_ratio: 0.003
   desired_pos_ratio: 0.7
   max_train_samples: 20000
 
 model:
-  img_size: 256
-  unet_base_filters: 16
+  img_size: 512
+  unet_base_filters: 32
   input_channels: 3
   output_channels: 1
 
 training:
-  batch_size: 32
+  batch_size: 24
   epochs: 50
   learning_rate: 0.0005
   optimizer: adam
   early_stopping_patience: 20
-  reduce_lr_patience: 8
+  reduce_lr_patience: 10
   loss:
     name: tversky
     alpha: 0.7
@@ -35,7 +35,7 @@ training:
 gpu:
   memory_growth: true
   mixed_precision: true
-  memory_limit_mb: 10240
+  memory_limit_mb: 30720
 
 logging:
   log_dir: logs
