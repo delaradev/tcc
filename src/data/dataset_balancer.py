@@ -215,13 +215,10 @@ class CPICDatasetBuilder:
             raise ValueError(f"No image-mask pairs found for split '{split}'")
         ds = tf.data.Dataset.from_tensor_slices(pairs)
         if training:
-            ds = ds.shuffle(buffer_size=len(pairs),
-                            seed=self.seed, reshuffle_each_iteration=True)
-
-        def load_fn(img_path, msk_path):
-            return self._load_and_preprocess(img_path, msk_path, training=training)
-
-        ds = ds.map(load_fn, num_parallel_calls=tf.data.AUTOTUNE)
+            ds = ds.shuffle(buffer_size=len(pairs), seed=self.seed, reshuffle_each_iteration=True)
+            
+        ds = ds.map(lambda img_msk: self._load_and_preprocess(img_msk[0], img_msk[1], training=training),
+                    num_parallel_calls=tf.data.AUTOTUNE)
         ds = ds.batch(batch_size)
         ds = ds.prefetch(tf.data.AUTOTUNE)
         return ds
