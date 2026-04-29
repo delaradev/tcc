@@ -22,7 +22,7 @@ model:
 
 training:
   batch_size: 16
-  epochs: 15
+  epochs: 50
   learning_rate: 0.001
   optimizer: adam
   early_stopping_patience: 4
