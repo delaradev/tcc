@@ -1,5 +1,6 @@
 import json
 import yaml
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -9,7 +10,7 @@ import tensorflow as tf
 from src.models.unet import build_unet
 from src.models.losses import tversky_loss
 from src.training.metrics import iou_score, dice_score, precision_score, recall_score
-from src.training.callbacks import PredictionSaver, GPUMemoryMonitor
+from src.training.callbacks import PredictionSaver
 from src.data.dataset_balancer import CPICDatasetBuilder
 from src.utils.gpu_utils import configure_gpu, get_gpu_info
 from src.utils.logging import get_logger
@@ -23,7 +24,8 @@ class Trainer:
             self.config = yaml.safe_load(f)
 
         self.run_name = f"{self.config['project']['name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        self.output_dir = Path('runs') / self.run_name
+        base_output = os.environ.get('CPIC_OUTPUT_DIR', 'runs')
+        self.output_dir = Path(base_output) / self.run_name
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         gpu_config = self.config['gpu']
@@ -34,6 +36,7 @@ class Trainer:
         )
 
         logger.info(f"Run: {self.run_name}")
+        logger.info(f"Output directory: {self.output_dir}")
         logger.info(f"GPU: {get_gpu_info()}")
         self.resume_from: Optional[str] = None
 
