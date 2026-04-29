@@ -173,6 +173,10 @@ class CPICDatasetBuilder:
         img_dir_name, mask_dir_name = self.splits[split]
         img_dir = self.dataset_path / img_dir_name
         mask_dir = self.dataset_path / mask_dir_name
+        if not img_dir.exists() or not mask_dir.exists():
+            logger.warning(
+                f"Directory missing for split {split}: {img_dir} or {mask_dir}")
+            return []
         pairs = []
         for mask_path in sorted(mask_dir.glob('*.png')):
             img_path = img_dir / mask_path.name
@@ -213,8 +217,11 @@ class CPICDatasetBuilder:
         if training:
             ds = ds.shuffle(buffer_size=len(pairs),
                             seed=self.seed, reshuffle_each_iteration=True)
-        ds = ds.map(lambda img, msk: self._load_and_preprocess(img, msk, training=training),
-                    num_parallel_calls=tf.data.AUTOTUNE)
+
+        def load_fn(img_path, msk_path):
+            return self._load_and_preprocess(img_path, msk_path, training=training)
+
+        ds = ds.map(load_fn, num_parallel_calls=tf.data.AUTOTUNE)
         ds = ds.batch(batch_size)
         ds = ds.prefetch(tf.data.AUTOTUNE)
         return ds
