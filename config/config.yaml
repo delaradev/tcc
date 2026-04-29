@@ -8,8 +8,8 @@ data:
   dataset_path: data/dataset
   balanced_path: data/dataset
   tiles_path: data/tiles
-  tile_size: 256
-  overlap: 16
+  tile_size: 384
+  overlap: 32
   min_fg_ratio: 0.003
   desired_pos_ratio: 0.7
   max_train_samples: 20000
@@ -21,12 +21,12 @@ model:
   output_channels: 1
 
 training:
-  batch_size: 16
+  batch_size: 32
   epochs: 50
-  learning_rate: 0.001
+  learning_rate: 0.0005
   optimizer: adam
-  early_stopping_patience: 4
-  reduce_lr_patience: 3
+  early_stopping_patience: 20
+  reduce_lr_patience: 8
   loss:
     name: tversky
     alpha: 0.7
@@ -35,7 +35,7 @@ training:
 gpu:
   memory_growth: true
   mixed_precision: true
-  memory_limit_mb: 3072
+  memory_limit_mb: 10240
 
 logging:
   log_dir: logs
