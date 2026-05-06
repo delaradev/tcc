@@ -1,6 +1,8 @@
 import tensorflow as tf
 from pathlib import Path
 import numpy as np
+import json
+import matplotlib.pyplot as plt
 
 
 class PredictionSaver(tf.keras.callbacks.Callback):
@@ -63,3 +65,132 @@ class GPUMemoryMonitor(tf.keras.callbacks.Callback):
             print(f"GPU Memory: {mem_used}")
         except:
             pass
+
+
+class EpochVisualizationCallback(tf.keras.callbacks.Callback):
+    """
+    Salva, a cada época, previsões e métricas para um conjunto fixo de amostras.
+    Útil para acompanhar a evolução do aprendizado.
+    """
+
+    def __init__(self, validation_ds, output_dir: str, sample_indices=None, num_samples=9):
+        super().__init__()
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Coletar amostras fixas do dataset de validação
+        self.sample_images = []
+        self.sample_masks = []
+        self.sample_names = []
+
+        ds_iter = iter(validation_ds.unbatch().batch(1))
+        idx = 0
+        if sample_indices is None:
+            for _ in range(num_samples):
+                try:
+                    img, mask = next(ds_iter)
+                    self.sample_images.append(img)
+                    self.sample_masks.append(mask)
+                    self.sample_names.append(f"sample_{idx:03d}")
+                    idx += 1
+                except StopIteration:
+                    break
+        else:
+            for i in sample_indices:
+                # Avançar iterador até o índice desejado
+                try:
+                    for _ in range(i):
+                        next(ds_iter)
+                    img, mask = next(ds_iter)
+                    self.sample_images.append(img)
+                    self.sample_masks.append(mask)
+                    self.sample_names.append(f"sample_{i:03d}")
+                except StopIteration:
+                    pass
+
+        self.num_samples = len(self.sample_images)
+        self.metrics_history = []
+
+    def on_epoch_end(self, epoch, logs=None):
+        epoch_dir = self.output_dir / f'epoch_{epoch+1:04d}'
+        epoch_dir.mkdir(exist_ok=True)
+
+        epoch_metrics = {'epoch': epoch+1, 'samples': []}
+
+        for i, (img, mask) in enumerate(zip(self.sample_images, self.sample_masks)):
+            pred = self.model.predict(img, verbose=0)[0, :, :, 0]
+            pred_bin = (pred >= 0.5).astype(np.float32)
+
+            mask_np = mask.numpy()[0, :, :, 0]
+            intersection = np.sum((pred_bin == 1) & (mask_np == 1))
+            union = np.sum((pred_bin == 1) | (mask_np == 1))
+            iou = intersection / (union + 1e-8)
+            dice = 2 * intersection / \
+                (np.sum(pred_bin) + np.sum(mask_np) + 1e-8)
+            precision = intersection / (np.sum(pred_bin) + 1e-8)
+            recall = intersection / (np.sum(mask_np) + 1e-8)
+
+            epoch_metrics['samples'].append({
+                'name': self.sample_names[i],
+                'iou': float(iou),
+                'dice': float(dice),
+                'precision': float(precision),
+                'recall': float(recall)
+            })
+
+            # Gerar visualização (grid 2x2)
+            fig, axes = plt.subplots(2, 2, figsize=(8, 8))
+            axes[0, 0].imshow(img.numpy()[0])
+            axes[0, 0].set_title('Image')
+            axes[0, 0].axis('off')
+            axes[0, 1].imshow(mask_np, cmap='gray')
+            axes[0, 1].set_title('Ground Truth')
+            axes[0, 1].axis('off')
+            axes[1, 0].imshow(pred_bin, cmap='gray')
+            axes[1, 0].set_title(f'Prediction (IoU={iou:.3f})')
+            axes[1, 0].axis('off')
+            overlay = np.zeros((*mask_np.shape, 3), dtype=np.float32)
+            tp = (mask_np == 1) & (pred_bin == 1)
+            fp = (mask_np == 0) & (pred_bin == 1)
+            fn = (mask_np == 1) & (pred_bin == 0)
+            overlay[tp, 1] = 1.0   # verde
+            overlay[fp, 0] = 1.0   # vermelho
+            overlay[fn, 2] = 1.0   # azul
+            axes[1, 1].imshow(overlay)
+            axes[1, 1].set_title('Overlay (TP, FP, FN)')
+            axes[1, 1].axis('off')
+
+            plt.suptitle(f"{self.sample_names[i]} - Epoch {epoch+1}")
+            plt.tight_layout()
+            plt.savefig(epoch_dir / f"{self.sample_names[i]}.png", dpi=100)
+            plt.close()
+
+        with open(epoch_dir / 'metrics.json', 'w') as f:
+            json.dump(epoch_metrics, f, indent=2)
+
+        self.metrics_history.append(epoch_metrics)
+        with open(self.output_dir / 'all_epochs_metrics.json', 'w') as f:
+            json.dump({'epochs': self.metrics_history}, f, indent=2)
+
+        # A cada 5 épocas, gerar gráfico de tendência do IoU
+        if (epoch + 1) % 5 == 0:
+            self.plot_iou_trend(self.output_dir / 'iou_trend.png')
+
+    def plot_iou_trend(self, save_path):
+        if not self.metrics_history:
+            return
+        epochs = [m['epoch'] for m in self.metrics_history]
+        num_samples = len(self.metrics_history[0]['samples'])
+        plt.figure(figsize=(10, 6))
+        for i in range(num_samples):
+            ious = [m['samples'][i]['iou'] for m in self.metrics_history]
+            plt.plot(epochs, ious, marker='o',
+                     label=self.metrics_history[0]['samples'][i]['name'])
+        plt.xlabel('Epoch')
+        plt.ylabel('IoU')
+        plt.title('IoU Evolution per Sample')
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=100)
+        plt.close()

@@ -1,5 +1,5 @@
 project:
-  name: CPIC_Brazil_512_2h
+  name: CPIC_Brazil_Article_Reproducible
   version: 3.0.0
   seed: 42
 
@@ -8,34 +8,38 @@ data:
   dataset_path: data/dataset
   balanced_path: data/dataset
   tiles_path: data/tiles
-  tile_size: 512
-  overlap: 64
+  tile_size: 512 # conforme artigo (patches 512x512)
+  overlap: 32 # usado apenas na inferência (artigo, seção 3.4)
   min_fg_ratio: 0.003
   desired_pos_ratio: 0.7
   max_train_samples: 20000
 
 model:
   img_size: 512
-  unet_base_filters: 32
+  unet_base_filters: 64 # ← CORREÇÃO: artigo usa 64, 128, 256, 512, 1024 (Fig. 7)
   input_channels: 3
   output_channels: 1
 
 training:
-  batch_size: 24
-  epochs: 50
-  learning_rate: 0.0005
-  optimizer: adam
-  early_stopping_patience: 20
-  reduce_lr_patience: 10
+  batch_size:
+    16 # artigo não especifica; usaram batch pequeno por GPU limitada.
+    # Aumentar NÃO altera resultado, só acelera. A100 suporta 16+.
+  epochs: 100 # igual artigo (seção 3.3)
+  learning_rate: 0.0001 # RMSprop learning rate (seção 3.3)
+  optimizer: rmsprop # exatamente o usado no artigo
+  early_stopping_patience: 15 # próximo ao descrito (paciência 12-15)
+  reduce_lr_patience: 5
   loss:
     name: tversky
-    alpha: 0.7
-    beta: 0.3
+    alpha: 0.7 # α = 0.7 (mais penalidade para falsos negativos)
+    beta: 0.3 # β = 0.3
+  randommix: true # ativado (seção 3.2, Algorithm 1)
+  randommix_prob: 1.0
 
 gpu:
   memory_growth: true
-  mixed_precision: true
-  memory_limit_mb: 30720
+  mixed_precision: true # acelera ~2x na A100, sem perda de qualidade
+  memory_limit_mb: 40960 # 40 GB da A100 – folga total
 
 logging:
   log_dir: logs
