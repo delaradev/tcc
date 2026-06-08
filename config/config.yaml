@@ -22,7 +22,7 @@ model:
 
 training:
   batch_size: 32 # artigo não especifica; usaram batch pequeno por GPU limitada.
-  epochs: 100 # igual artigo (seção 3.3)
+  epochs: 10 # igual artigo (seção 3.3)
   learning_rate: 0.0001 # RMSprop learning rate (seção 3.3)
   optimizer: rmsprop # exatamente o usado no artigo
   early_stopping_patience: 15 # próximo ao descrito (paciência 12-15)

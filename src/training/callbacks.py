@@ -3,9 +3,11 @@ from pathlib import Path
 import numpy as np
 import json
 import matplotlib.pyplot as plt
+import random
 
 
 class PredictionSaver(tf.keras.callbacks.Callback):
+    # (mantido igual ao seu)
     def __init__(self, validation_ds, save_dir: str, max_samples: int = 4, threshold: float = 0.5):
         super().__init__()
         self.validation_ds = validation_ds
@@ -69,49 +71,87 @@ class GPUMemoryMonitor(tf.keras.callbacks.Callback):
 
 class EpochVisualizationCallback(tf.keras.callbacks.Callback):
     """
-    Salva, a cada época, previsões e métricas para um conjunto fixo de amostras.
-    Útil para acompanhar a evolução do aprendizado.
+    Salva a cada época previsões e métricas para amostras do dataset de validação.
+
+    Estratégias de amostragem:
+        - 'fixed': usa as primeiras 'num_samples' imagens (padrão antigo).
+        - 'random_once': sorteia as amostras uma vez no início e mantém fixas.
+        - 'random_each_epoch': sorteia novas amostras a cada época.
     """
 
-    def __init__(self, validation_ds, output_dir: str, sample_indices=None, num_samples=9):
+    def __init__(self, validation_ds, output_dir: str, num_samples=9,
+                 sample_strategy='fixed', random_seed=42):
         super().__init__()
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.num_samples = num_samples
+        self.sample_strategy = sample_strategy
+        self.random_seed = random_seed
+        self.validation_ds = validation_ds
+        self.metrics_history = []
 
-        # Coletar amostras fixas do dataset de validação
+        # Para 'fixed' e 'random_once', pré-selecionamos as amostras
+        if self.sample_strategy == 'fixed':
+            self._select_fixed_samples()
+        elif self.sample_strategy == 'random_once':
+            self._select_random_samples(epoch=0, force_fixed=True)
+        else:
+            # 'random_each_epoch' não pré-seleciona; será feito a cada época
+            self.sample_images = []
+            self.sample_masks = []
+            self.sample_names = []
+
+    def _select_fixed_samples(self):
+        """Seleciona as primeiras 'num_samples' imagens do dataset"""
+        ds_iter = iter(self.validation_ds.unbatch().batch(1))
         self.sample_images = []
         self.sample_masks = []
         self.sample_names = []
-
-        ds_iter = iter(validation_ds.unbatch().batch(1))
         idx = 0
-        if sample_indices is None:
-            for _ in range(num_samples):
-                try:
-                    img, mask = next(ds_iter)
-                    self.sample_images.append(img)
-                    self.sample_masks.append(mask)
-                    self.sample_names.append(f"sample_{idx:03d}")
-                    idx += 1
-                except StopIteration:
-                    break
-        else:
-            for i in sample_indices:
-                # Avançar iterador até o índice desejado
-                try:
-                    for _ in range(i):
-                        next(ds_iter)
-                    img, mask = next(ds_iter)
-                    self.sample_images.append(img)
-                    self.sample_masks.append(mask)
-                    self.sample_names.append(f"sample_{i:03d}")
-                except StopIteration:
-                    pass
+        for _ in range(self.num_samples):
+            try:
+                img, mask = next(ds_iter)
+                self.sample_images.append(img)
+                self.sample_masks.append(mask)
+                self.sample_names.append(f"fixed_{idx:03d}")
+                idx += 1
+            except StopIteration:
+                break
 
-        self.num_samples = len(self.sample_images)
-        self.metrics_history = []
+    def _select_random_samples(self, epoch=None, force_fixed=False):
+        """Sorteia 'num_samples' amostras do dataset de validação"""
+        # Converte o dataset para uma lista (pode ser pesado, mas é feito uma única vez)
+        if not hasattr(self, '_dataset_list'):
+            self._dataset_list = list(self.validation_ds.unbatch().batch(1))
+            self._total = len(self._dataset_list)
+
+        if force_fixed or self.sample_strategy == 'random_once':
+            # Sorteia uma vez, baseado na seed global
+            rng = random.Random(self.random_seed)
+            indices = rng.sample(range(self._total), min(
+                self.num_samples, self._total))
+        else:
+            # Sorteia a cada época (seed = seed + epoch)
+            epoch_seed = self.random_seed + (epoch if epoch else 0)
+            rng = random.Random(epoch_seed)
+            indices = rng.sample(range(self._total), min(
+                self.num_samples, self._total))
+
+        self.sample_images = []
+        self.sample_masks = []
+        self.sample_names = []
+        for i, idx in enumerate(indices):
+            img, mask = self._dataset_list[idx]
+            self.sample_images.append(img)
+            self.sample_masks.append(mask)
+            prefix = "random_once" if force_fixed or self.sample_strategy == 'random_once' else f"epoch_{epoch+1}"
+            self.sample_names.append(f"{prefix}_{i:03d}")
 
     def on_epoch_end(self, epoch, logs=None):
+        # Atualiza amostras se a estratégia for 'random_each_epoch'
+        if self.sample_strategy == 'random_each_epoch':
+            self._select_random_samples(epoch=epoch)
+
         epoch_dir = self.output_dir / f'epoch_{epoch+1:04d}'
         epoch_dir.mkdir(exist_ok=True)
 
@@ -138,7 +178,7 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
                 'recall': float(recall)
             })
 
-            # Gerar visualização (grid 2x2)
+            # Visualização (grid 2x2)
             fig, axes = plt.subplots(2, 2, figsize=(8, 8))
             axes[0, 0].imshow(img.numpy()[0])
             axes[0, 0].set_title('Image')
@@ -159,7 +199,6 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
             axes[1, 1].imshow(overlay)
             axes[1, 1].set_title('Overlay (TP, FP, FN)')
             axes[1, 1].axis('off')
-
             plt.suptitle(f"{self.sample_names[i]} - Epoch {epoch+1}")
             plt.tight_layout()
             plt.savefig(epoch_dir / f"{self.sample_names[i]}.png", dpi=100)

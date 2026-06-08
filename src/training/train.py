@@ -3,7 +3,7 @@ import yaml
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Dict
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 
 
 class Trainer:
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, resume_from: Optional[str] = None):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
 
@@ -40,7 +40,9 @@ class Trainer:
         logger.info(f"Run: {self.run_name}")
         logger.info(f"Output directory: {self.output_dir}")
         logger.info(f"GPU: {get_gpu_info()}")
-        self.resume_from: Optional[str] = None
+
+        self.resume_from = resume_from
+        self.initial_epoch = 0
 
     def prepare_data(self):
         data_config = self.config['data']
@@ -72,7 +74,8 @@ class Trainer:
         )
         self.sample_ds = self.val_ds.take(1)
 
-    def build_model(self):
+    def build_and_compile_model(self):
+        """Constrói e compila o modelo do zero"""
         model_config = self.config['model']
         self.model = build_unet(
             input_shape=(
@@ -84,10 +87,8 @@ class Trainer:
         )
         logger.info(self.model.summary())
 
-    def compile_model(self):
         train_config = self.config['training']
         loss_config = train_config['loss']
-
         loss_fn = tversky_loss(
             alpha=loss_config['alpha'], beta=loss_config['beta'])
 
@@ -107,6 +108,35 @@ class Trainer:
 
         self.model.compile(optimizer=optimizer, loss=loss_fn, metrics=metrics)
 
+    def load_resume_model(self):
+        """Carrega um modelo salvo para continuar o treinamento"""
+        if not self.resume_from or not os.path.exists(self.resume_from):
+            raise FileNotFoundError(
+                f"Resume path not found: {self.resume_from}")
+
+        logger.info(f"Resuming training from {self.resume_from}")
+        loss_config = self.config['training']['loss']
+        custom_objects = {
+            'tversky_loss': tversky_loss(alpha=loss_config['alpha'], beta=loss_config['beta']),
+            'iou_score': iou_score(),
+            'dice_score': dice_score(),
+            'precision_score': precision_score(),
+            'recall_score': recall_score()
+        }
+        self.model = tf.keras.models.load_model(
+            self.resume_from, custom_objects=custom_objects)
+
+        # Tenta extrair a época inicial do nome do arquivo, se possível
+        import re
+        match = re.search(r'epoch_(\d+)', self.resume_from)
+        if match:
+            self.initial_epoch = int(match.group(1))
+            logger.info(
+                f"Setting initial_epoch to {self.initial_epoch} based on filename")
+        else:
+            self.initial_epoch = self.config['training'].get('resume_epoch', 0)
+            logger.info(f"Initial epoch set to {self.initial_epoch}")
+
     def setup_callbacks(self):
         train_config = self.config['training']
 
@@ -116,6 +146,11 @@ class Trainer:
                 monitor='val_iou_score',
                 mode='max',
                 save_best_only=True
+            ),
+            tf.keras.callbacks.ModelCheckpoint(
+                str(self.output_dir / 'model_epoch_{epoch:04d}.keras'),
+                save_freq='epoch',
+                period=5
             ),
             tf.keras.callbacks.EarlyStopping(
                 monitor='val_loss',
@@ -135,7 +170,10 @@ class Trainer:
             EpochVisualizationCallback(
                 validation_ds=self.val_ds,
                 output_dir=str(self.output_dir / 'epoch_vis'),
-                num_samples=9
+                num_samples=9,
+                sample_strategy='random_each_epoch',
+                #sample_strategy='fixed',
+                random_seed=self.config['project']['seed']
             )
         ]
         self.callbacks = callbacks
@@ -151,6 +189,7 @@ class Trainer:
             self.train_ds,
             validation_data=self.val_ds,
             epochs=train_config['epochs'],
+            initial_epoch=self.initial_epoch,
             callbacks=self.callbacks,
             verbose=1
         )
@@ -175,19 +214,16 @@ class Trainer:
         best_model_path = self.output_dir / 'best_model.keras'
         if best_model_path.exists():
             logger.info(f"Loading best model from {best_model_path}")
+            loss_config = self.config['training']['loss']
+            custom_objects = {
+                'tversky_loss': tversky_loss(alpha=loss_config['alpha'], beta=loss_config['beta']),
+                'iou_score': iou_score(),
+                'dice_score': dice_score(),
+                'precision_score': precision_score(),
+                'recall_score': recall_score()
+            }
             best_model = tf.keras.models.load_model(
-                best_model_path,
-                custom_objects={
-                    'tversky_loss': tversky_loss(
-                        alpha=self.config['training']['loss']['alpha'],
-                        beta=self.config['training']['loss']['beta']
-                    ),
-                    'iou_score': iou_score(),
-                    'dice_score': dice_score(),
-                    'precision_score': precision_score(),
-                    'recall_score': recall_score()
-                }
-            )
+                best_model_path, custom_objects=custom_objects)
         else:
             logger.warning("Best model not found, using current model")
             best_model = self.model
@@ -360,7 +396,9 @@ class Trainer:
 
     def run(self):
         self.prepare_data()
-        self.build_model()
-        self.compile_model()
+        if self.resume_from:
+            self.load_resume_model()
+        else:
+            self.build_and_compile_model()
         self.setup_callbacks()
         self.train()
