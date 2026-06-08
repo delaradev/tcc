@@ -149,8 +149,7 @@ class Trainer:
             ),
             tf.keras.callbacks.ModelCheckpoint(
                 str(self.output_dir / 'model_epoch_{epoch:04d}.keras'),
-                save_freq='epoch',
-                period=5
+                save_freq='epoch'          # salva todas as épocas (sem 'period')
             ),
             tf.keras.callbacks.EarlyStopping(
                 monitor='val_loss',
@@ -171,8 +170,7 @@ class Trainer:
                 validation_ds=self.val_ds,
                 output_dir=str(self.output_dir / 'epoch_vis'),
                 num_samples=9,
-                sample_strategy='random_each_epoch',
-                #sample_strategy='fixed',
+                sample_strategy='random_once',   # ou 'fixed' ou 'random_each_epoch'
                 random_seed=self.config['project']['seed']
             )
         ]
