@@ -75,6 +75,7 @@ class Trainer:
         self.sample_ds = self.val_ds.take(1)
 
     def build_and_compile_model(self):
+        """Constrói e compila o modelo do zero"""
         model_config = self.config['model']
         self.model = build_unet(
             input_shape=(
@@ -105,6 +106,7 @@ class Trainer:
         self.model.compile(optimizer=optimizer, loss=loss_fn, metrics=metrics)
 
     def load_resume_model(self):
+        """Carrega um modelo salvo para continuar o treinamento"""
         if not self.resume_from or not os.path.exists(self.resume_from):
             raise FileNotFoundError(
                 f"Resume path not found: {self.resume_from}")
@@ -122,6 +124,7 @@ class Trainer:
         self.model = tf.keras.models.load_model(
             self.resume_from, custom_objects=custom_objects)
 
+        # Tenta extrair a época inicial do nome do arquivo, se possível
         import re
         match = re.search(r'epoch_(\d+)', self.resume_from)
         if match:
@@ -136,15 +139,13 @@ class Trainer:
         train_config = self.config['training']
 
         callbacks = [
+            # Salva APENAS o melhor modelo com base no val_iou_score
             tf.keras.callbacks.ModelCheckpoint(
                 str(self.output_dir / 'best_model.keras'),
                 monitor='val_iou_score',
                 mode='max',
-                save_best_only=True
-            ),
-            tf.keras.callbacks.ModelCheckpoint(
-                str(self.output_dir / 'model_epoch_{epoch:04d}.keras'),
-                save_freq='epoch'
+                save_best_only=True,
+                verbose=1
             ),
             tf.keras.callbacks.EarlyStopping(
                 monitor='val_loss',
@@ -191,11 +192,12 @@ class Trainer:
             json.dump(history.history, f, indent=2)
 
         self.post_training_analysis(history.history)
+
         logger.info(f"Training completed. Model saved in {self.output_dir}")
 
-    # ------------------------------------------------------------
-    # Análises pós-treinamento (professor)
-    # ------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Análises pós-treinamento (solicitadas pelo professor)
+    # -------------------------------------------------------------------------
     def post_training_analysis(self, history: dict):
         logger.info("Running post-training analysis...")
         analysis_dir = self.output_dir / 'analysis'
@@ -319,8 +321,16 @@ class Trainer:
         best_5 = sorted_by_iou[-5:]
 
         ranking = {
-            'best_5': [{k: v for k, v in m.items() if k not in ['prediction', 'mask', 'image']} for m in best_5],
-            'worst_5': [{k: v for k, v in m.items() if k not in ['prediction', 'mask', 'image']} for m in worst_5]
+            'best_5': [
+                {k: v for k, v in m.items() if k not in [
+                    'prediction', 'mask', 'image']}
+                for m in best_5
+            ],
+            'worst_5': [
+                {k: v for k, v in m.items() if k not in [
+                    'prediction', 'mask', 'image']}
+                for m in worst_5
+            ]
         }
         with open(output_dir / 'ranking_top5_bottom5.json', 'w') as f:
             json.dump(ranking, f, indent=2)
