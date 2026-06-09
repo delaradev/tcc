@@ -75,14 +75,10 @@ class Trainer:
         self.sample_ds = self.val_ds.take(1)
 
     def build_and_compile_model(self):
-        """Constrói e compila o modelo do zero"""
         model_config = self.config['model']
         self.model = build_unet(
             input_shape=(
-                model_config['img_size'],
-                model_config['img_size'],
-                model_config['input_channels']
-            ),
+                model_config['img_size'], model_config['img_size'], model_config['input_channels']),
             base_filters=model_config['unet_base_filters']
         )
         logger.info(self.model.summary())
@@ -109,7 +105,6 @@ class Trainer:
         self.model.compile(optimizer=optimizer, loss=loss_fn, metrics=metrics)
 
     def load_resume_model(self):
-        """Carrega um modelo salvo para continuar o treinamento"""
         if not self.resume_from or not os.path.exists(self.resume_from):
             raise FileNotFoundError(
                 f"Resume path not found: {self.resume_from}")
@@ -121,12 +116,12 @@ class Trainer:
             'iou_score': iou_score(),
             'dice_score': dice_score(),
             'precision_score': precision_score(),
-            'recall_score': recall_score()
+            'recall_score': recall_score(),
+            'loss': tversky_loss(alpha=loss_config['alpha'], beta=loss_config['beta'])
         }
         self.model = tf.keras.models.load_model(
             self.resume_from, custom_objects=custom_objects)
 
-        # Tenta extrair a época inicial do nome do arquivo, se possível
         import re
         match = re.search(r'epoch_(\d+)', self.resume_from)
         if match:
@@ -149,7 +144,7 @@ class Trainer:
             ),
             tf.keras.callbacks.ModelCheckpoint(
                 str(self.output_dir / 'model_epoch_{epoch:04d}.keras'),
-                save_freq='epoch'          # salva todas as épocas (sem 'period')
+                save_freq='epoch'
             ),
             tf.keras.callbacks.EarlyStopping(
                 monitor='val_loss',
@@ -170,7 +165,7 @@ class Trainer:
                 validation_ds=self.val_ds,
                 output_dir=str(self.output_dir / 'epoch_vis'),
                 num_samples=9,
-                sample_strategy='random_once',   # ou 'fixed' ou 'random_each_epoch'
+                sample_strategy='random_once',
                 random_seed=self.config['project']['seed']
             )
         ]
@@ -196,12 +191,11 @@ class Trainer:
             json.dump(history.history, f, indent=2)
 
         self.post_training_analysis(history.history)
-
         logger.info(f"Training completed. Model saved in {self.output_dir}")
 
-    # -------------------------------------------------------------------------
-    # Análises pós-treinamento (solicitadas pelo professor)
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------
+    # Análises pós-treinamento (professor)
+    # ------------------------------------------------------------
     def post_training_analysis(self, history: dict):
         logger.info("Running post-training analysis...")
         analysis_dir = self.output_dir / 'analysis'
@@ -218,7 +212,8 @@ class Trainer:
                 'iou_score': iou_score(),
                 'dice_score': dice_score(),
                 'precision_score': precision_score(),
-                'recall_score': recall_score()
+                'recall_score': recall_score(),
+                'loss': tversky_loss(alpha=loss_config['alpha'], beta=loss_config['beta'])
             }
             best_model = tf.keras.models.load_model(
                 best_model_path, custom_objects=custom_objects)
@@ -324,16 +319,8 @@ class Trainer:
         best_5 = sorted_by_iou[-5:]
 
         ranking = {
-            'best_5': [
-                {k: v for k, v in m.items() if k not in [
-                    'prediction', 'mask', 'image']}
-                for m in best_5
-            ],
-            'worst_5': [
-                {k: v for k, v in m.items() if k not in [
-                    'prediction', 'mask', 'image']}
-                for m in worst_5
-            ]
+            'best_5': [{k: v for k, v in m.items() if k not in ['prediction', 'mask', 'image']} for m in best_5],
+            'worst_5': [{k: v for k, v in m.items() if k not in ['prediction', 'mask', 'image']} for m in worst_5]
         }
         with open(output_dir / 'ranking_top5_bottom5.json', 'w') as f:
             json.dump(ranking, f, indent=2)

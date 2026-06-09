@@ -1,6 +1,8 @@
 import tensorflow as tf
+from tensorflow.keras.saving import register_keras_serializable
 
 
+@register_keras_serializable()
 def iou_score(threshold: float = 0.5, smooth: float = 1e-6, name='iou_score'):
     def metric(y_true, y_pred):
         y_true = tf.cast(y_true, tf.float32)
@@ -14,6 +16,7 @@ def iou_score(threshold: float = 0.5, smooth: float = 1e-6, name='iou_score'):
     return metric
 
 
+@register_keras_serializable()
 def dice_score(threshold: float = 0.5, smooth: float = 1e-6, name='dice_score'):
     def metric(y_true, y_pred):
         y_true = tf.cast(y_true, tf.float32)
@@ -26,6 +29,7 @@ def dice_score(threshold: float = 0.5, smooth: float = 1e-6, name='dice_score'):
     return metric
 
 
+@register_keras_serializable()
 def precision_score(threshold: float = 0.5, smooth: float = 1e-6, name='precision_score'):
     def metric(y_true, y_pred):
         y_true = tf.cast(y_true, tf.float32)
@@ -38,6 +42,7 @@ def precision_score(threshold: float = 0.5, smooth: float = 1e-6, name='precisio
     return metric
 
 
+@register_keras_serializable()
 def recall_score(threshold: float = 0.5, smooth: float = 1e-6, name='recall_score'):
     def metric(y_true, y_pred):
         y_true = tf.cast(y_true, tf.float32)

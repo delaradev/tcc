@@ -7,7 +7,6 @@ import random
 
 
 class PredictionSaver(tf.keras.callbacks.Callback):
-    # (mantido igual ao seu)
     def __init__(self, validation_ds, save_dir: str, max_samples: int = 4, threshold: float = 0.5):
         super().__init__()
         self.validation_ds = validation_ds
@@ -90,19 +89,16 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
         self.validation_ds = validation_ds
         self.metrics_history = []
 
-        # Para 'fixed' e 'random_once', pré-selecionamos as amostras
         if self.sample_strategy == 'fixed':
             self._select_fixed_samples()
         elif self.sample_strategy == 'random_once':
             self._select_random_samples(epoch=0, force_fixed=True)
         else:
-            # 'random_each_epoch' não pré-seleciona; será feito a cada época
             self.sample_images = []
             self.sample_masks = []
             self.sample_names = []
 
     def _select_fixed_samples(self):
-        """Seleciona as primeiras 'num_samples' imagens do dataset"""
         ds_iter = iter(self.validation_ds.unbatch().batch(1))
         self.sample_images = []
         self.sample_masks = []
@@ -119,19 +115,15 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
                 break
 
     def _select_random_samples(self, epoch=None, force_fixed=False):
-        """Sorteia 'num_samples' amostras do dataset de validação"""
-        # Converte o dataset para uma lista (pode ser pesado, mas é feito uma única vez)
         if not hasattr(self, '_dataset_list'):
             self._dataset_list = list(self.validation_ds.unbatch().batch(1))
             self._total = len(self._dataset_list)
 
         if force_fixed or self.sample_strategy == 'random_once':
-            # Sorteia uma vez, baseado na seed global
             rng = random.Random(self.random_seed)
             indices = rng.sample(range(self._total), min(
                 self.num_samples, self._total))
         else:
-            # Sorteia a cada época (seed = seed + epoch)
             epoch_seed = self.random_seed + (epoch if epoch else 0)
             rng = random.Random(epoch_seed)
             indices = rng.sample(range(self._total), min(
@@ -148,7 +140,6 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
             self.sample_names.append(f"{prefix}_{i:03d}")
 
     def on_epoch_end(self, epoch, logs=None):
-        # Atualiza amostras se a estratégia for 'random_each_epoch'
         if self.sample_strategy == 'random_each_epoch':
             self._select_random_samples(epoch=epoch)
 
@@ -193,9 +184,9 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
             tp = (mask_np == 1) & (pred_bin == 1)
             fp = (mask_np == 0) & (pred_bin == 1)
             fn = (mask_np == 1) & (pred_bin == 0)
-            overlay[tp, 1] = 1.0   # verde
-            overlay[fp, 0] = 1.0   # vermelho
-            overlay[fn, 2] = 1.0   # azul
+            overlay[tp, 1] = 1.0
+            overlay[fp, 0] = 1.0
+            overlay[fn, 2] = 1.0
             axes[1, 1].imshow(overlay)
             axes[1, 1].set_title('Overlay (TP, FP, FN)')
             axes[1, 1].axis('off')
@@ -211,7 +202,6 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
         with open(self.output_dir / 'all_epochs_metrics.json', 'w') as f:
             json.dump({'epochs': self.metrics_history}, f, indent=2)
 
-        # A cada 5 épocas, gerar gráfico de tendência do IoU
         if (epoch + 1) % 5 == 0:
             self.plot_iou_trend(self.output_dir / 'iou_trend.png')
 
