@@ -148,6 +148,7 @@ class Trainer:
             ),
             tf.keras.callbacks.EarlyStopping(
                 monitor='val_iou_score',
+                mode='max',
                 patience=train_config['early_stopping_patience'],
                 restore_best_weights=True
             ),
