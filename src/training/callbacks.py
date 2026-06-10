@@ -4,6 +4,7 @@ import numpy as np
 import json
 import matplotlib.pyplot as plt
 import random
+from typing import List
 
 
 class PredictionSaver(tf.keras.callbacks.Callback):
@@ -71,15 +72,11 @@ class GPUMemoryMonitor(tf.keras.callbacks.Callback):
 class EpochVisualizationCallback(tf.keras.callbacks.Callback):
     """
     Salva a cada época previsões e métricas para amostras do dataset de validação.
-
-    Estratégias de amostragem:
-        - 'fixed': usa as primeiras 'num_samples' imagens (padrão antigo).
-        - 'random_once': sorteia as amostras uma vez no início e mantém fixas.
-        - 'random_each_epoch': sorteia novas amostras a cada época.
+    Preserva os nomes originais dos arquivos.
     """
 
-    def __init__(self, validation_ds, output_dir: str, num_samples=9,
-                 sample_strategy='fixed', random_seed=42):
+    def __init__(self, validation_ds, output_dir: str, val_filenames: List[str],
+                 num_samples=9, sample_strategy='fixed', random_seed=42):
         super().__init__()
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -87,7 +84,12 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
         self.sample_strategy = sample_strategy
         self.random_seed = random_seed
         self.validation_ds = validation_ds
+        self.val_filenames = val_filenames
         self.metrics_history = []
+
+        # Converte o dataset para lista uma vez
+        self._dataset_list = list(self.validation_ds.unbatch().batch(1))
+        self._total = len(self._dataset_list)
 
         if self.sample_strategy == 'fixed':
             self._select_fixed_samples()
@@ -99,26 +101,16 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
             self.sample_names = []
 
     def _select_fixed_samples(self):
-        ds_iter = iter(self.validation_ds.unbatch().batch(1))
         self.sample_images = []
         self.sample_masks = []
         self.sample_names = []
-        idx = 0
-        for _ in range(self.num_samples):
-            try:
-                img, mask = next(ds_iter)
-                self.sample_images.append(img)
-                self.sample_masks.append(mask)
-                self.sample_names.append(f"fixed_{idx:03d}")
-                idx += 1
-            except StopIteration:
-                break
+        for idx in range(min(self.num_samples, self._total)):
+            img, mask = self._dataset_list[idx]
+            self.sample_images.append(img)
+            self.sample_masks.append(mask)
+            self.sample_names.append(self.val_filenames[idx])
 
     def _select_random_samples(self, epoch=None, force_fixed=False):
-        if not hasattr(self, '_dataset_list'):
-            self._dataset_list = list(self.validation_ds.unbatch().batch(1))
-            self._total = len(self._dataset_list)
-
         if force_fixed or self.sample_strategy == 'random_once':
             rng = random.Random(self.random_seed)
             indices = rng.sample(range(self._total), min(
@@ -132,12 +124,11 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
         self.sample_images = []
         self.sample_masks = []
         self.sample_names = []
-        for i, idx in enumerate(indices):
+        for idx in indices:
             img, mask = self._dataset_list[idx]
             self.sample_images.append(img)
             self.sample_masks.append(mask)
-            prefix = "random_once" if force_fixed or self.sample_strategy == 'random_once' else f"epoch_{epoch+1}"
-            self.sample_names.append(f"{prefix}_{i:03d}")
+            self.sample_names.append(self.val_filenames[idx])
 
     def on_epoch_end(self, epoch, logs=None):
         if self.sample_strategy == 'random_each_epoch':
@@ -151,8 +142,8 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
         for i, (img, mask) in enumerate(zip(self.sample_images, self.sample_masks)):
             pred = self.model.predict(img, verbose=0)[0, :, :, 0]
             pred_bin = (pred >= 0.5).astype(np.float32)
-
             mask_np = mask.numpy()[0, :, :, 0]
+
             intersection = np.sum((pred_bin == 1) & (mask_np == 1))
             union = np.sum((pred_bin == 1) | (mask_np == 1))
             iou = intersection / (union + 1e-8)
@@ -192,7 +183,8 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
             axes[1, 1].axis('off')
             plt.suptitle(f"{self.sample_names[i]} - Epoch {epoch+1}")
             plt.tight_layout()
-            plt.savefig(epoch_dir / f"{self.sample_names[i]}.png", dpi=100)
+            plt.savefig(
+                epoch_dir / f"{self.sample_names[i]}_epoch_{epoch+1:04d}.png", dpi=100)
             plt.close()
 
         with open(epoch_dir / 'metrics.json', 'w') as f:
@@ -213,8 +205,8 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
         plt.figure(figsize=(10, 6))
         for i in range(num_samples):
             ious = [m['samples'][i]['iou'] for m in self.metrics_history]
-            plt.plot(epochs, ious, marker='o',
-                     label=self.metrics_history[0]['samples'][i]['name'])
+            label = self.metrics_history[0]['samples'][i]['name']
+            plt.plot(epochs, ious, marker='o', label=label)
         plt.xlabel('Epoch')
         plt.ylabel('IoU')
         plt.title('IoU Evolution per Sample')

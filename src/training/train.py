@@ -62,6 +62,9 @@ class Trainer:
         logger.info(
             f"Train pairs: {len(train_pairs)}, Val pairs: {len(val_pairs)}")
 
+        # Extrai os nomes originais das imagens de validação (ordem do dataset)
+        self.val_filenames = [Path(p[0]).stem for p in val_pairs]
+
         self.train_ds = self.dataset_builder.build_dataset(
             split='train',
             batch_size=self.config['training']['batch_size'],
@@ -75,7 +78,6 @@ class Trainer:
         self.sample_ds = self.val_ds.take(1)
 
     def build_and_compile_model(self):
-        """Constrói e compila o modelo do zero"""
         model_config = self.config['model']
         self.model = build_unet(
             input_shape=(
@@ -106,7 +108,6 @@ class Trainer:
         self.model.compile(optimizer=optimizer, loss=loss_fn, metrics=metrics)
 
     def load_resume_model(self):
-        """Carrega um modelo salvo para continuar o treinamento"""
         if not self.resume_from or not os.path.exists(self.resume_from):
             raise FileNotFoundError(
                 f"Resume path not found: {self.resume_from}")
@@ -124,7 +125,6 @@ class Trainer:
         self.model = tf.keras.models.load_model(
             self.resume_from, custom_objects=custom_objects)
 
-        # Tenta extrair a época inicial do nome do arquivo, se possível
         import re
         match = re.search(r'epoch_(\d+)', self.resume_from)
         if match:
@@ -139,7 +139,6 @@ class Trainer:
         train_config = self.config['training']
 
         callbacks = [
-            # Salva APENAS o melhor modelo com base no val_iou_score
             tf.keras.callbacks.ModelCheckpoint(
                 str(self.output_dir / 'best_model.keras'),
                 monitor='val_iou_score',
@@ -162,11 +161,22 @@ class Trainer:
                 log_dir=self.output_dir / 'tensorboard'),
             PredictionSaver(self.sample_ds, str(
                 self.output_dir / 'predictions'), max_samples=4),
+            # Amostras fixas (ex: primeiras 5)
             EpochVisualizationCallback(
                 validation_ds=self.val_ds,
-                output_dir=str(self.output_dir / 'epoch_vis'),
-                num_samples=9,
-                sample_strategy='random_once',
+                output_dir=str(self.output_dir / 'epoch_vis_fixed'),
+                val_filenames=self.val_filenames,
+                num_samples=5,
+                sample_strategy='fixed',
+                random_seed=self.config['project']['seed']
+            ),
+            # Amostras aleatórias a cada época (ex: outras 5)
+            EpochVisualizationCallback(
+                validation_ds=self.val_ds,
+                output_dir=str(self.output_dir / 'epoch_vis_random_each'),
+                val_filenames=self.val_filenames,
+                num_samples=5,
+                sample_strategy='random_each_epoch',
                 random_seed=self.config['project']['seed']
             )
         ]
