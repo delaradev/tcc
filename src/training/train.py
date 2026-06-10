@@ -147,12 +147,13 @@ class Trainer:
                 verbose=1
             ),
             tf.keras.callbacks.EarlyStopping(
-                monitor='val_loss',
+                monitor='val_iou_score',
                 patience=train_config['early_stopping_patience'],
                 restore_best_weights=True
             ),
             tf.keras.callbacks.ReduceLROnPlateau(
-                monitor='val_loss',
+                monitor='val_iou_score ',
+                mode='max',
                 factor=0.5,
                 patience=train_config['reduce_lr_patience'],
                 min_lr=1e-7
