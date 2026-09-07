@@ -5,8 +5,6 @@ from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 def extract_zenodo_dataset(zip_path: Optional[Path] = None, extract_to: Optional[Path] = None,
@@ -88,6 +86,8 @@ def get_dataset_info() -> dict:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - %(levelname)s - %(message)s')
     import argparse
     parser = argparse.ArgumentParser(description="CPIC Dataset utilities")
     parser.add_argument('--extract', action='store_true',

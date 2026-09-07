@@ -13,10 +13,8 @@ project:
 data:
   balanced_path: data/dataset_amaja_final # valid_images/ + valid_masks/, após tiles.py + review_tiles.py (validação humana)
 
-# Sem seção `model:` de propósito: --mode predict/export/validate carregam a
-# arquitetura e os pesos direto do .keras salvo (tf.keras.models.load_model), nunca a
-# reconstroem a partir de config — um `model:` aqui seria só decorativo (podendo
-# inclusive divergir do modelo real sem ninguém perceber).
+# Sem seção `model:`: --mode predict/export/validate carregam arquitetura e pesos
+# direto do .keras salvo, nunca a partir do config.
 
 training:
   loss:

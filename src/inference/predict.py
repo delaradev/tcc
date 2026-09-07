@@ -90,9 +90,7 @@ class CPICPredictor:
 
         data_config = self.config['data']
 
-        # image_size vem do modelo .keras já carregado (self.img_size), não do config:
-        # a arquitetura real é a salva no modelo, não a reconstruída a partir de
-        # config['model'] (que este método nem usa para outra coisa além disso).
+        # image_size vem do modelo .keras carregado, não de config['model'].
         builder = CPICDatasetBuilder(
             dataset_path=data_config['balanced_path'],
             image_size=self.img_size,

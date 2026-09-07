@@ -60,8 +60,6 @@ from typing import Dict, Optional
 import geopandas as gpd
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Municípios da AMAJA e respectivos códigos IBGE (7 dígitos).
 # Fonte: https://amaja.com.br/site/municipios.php + servicodados.ibge.gov.br/api/v1/localidades
@@ -267,4 +265,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - %(levelname)s - %(message)s')
     main()

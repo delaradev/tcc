@@ -76,10 +76,8 @@ def generate_randommix_dataset(
         if fg >= min_fg_ratio:
             positives.append((img_path, msk_path))
         else:
-            # Mesmo critério de create_balanced_dataset() (dataset_balancer.py): tudo
-            # abaixo de min_fg_ratio é negativo, não apenas fg==0.0 — caso contrário,
-            # tiles com um pouco de SIPC (abaixo do limiar) eram descartados em
-            # silêncio, sem entrar nem como positivo nem como negativo.
+            # Mesmo critério de create_balanced_dataset() (dataset_balancer.py):
+            # tudo abaixo de min_fg_ratio conta como negativo.
             negatives.append((img_path, msk_path))
 
     if not positives or not negatives:

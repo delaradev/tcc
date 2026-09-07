@@ -14,8 +14,6 @@ from shapely import force_2d
 from shapely.geometry import box
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class NormalizationStrategy:
@@ -302,4 +300,6 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - %(levelname)s - %(message)s')
     main()

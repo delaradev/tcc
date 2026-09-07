@@ -250,9 +250,9 @@ rodam em qualquer ambiente. Os que dependem (`test_dataset_balancer.py`,
 ## Solução de problemas
 
 - **`ModuleNotFoundError: No module named 'tensorflow'` ao rodar um script de dados**:
-  não deveria mais acontecer para `amaja.py`, `tiles.py`, `ana_mask.py`,
-  `review_tiles.py` — esses módulos não dependem de TensorFlow. Se aparecer em
-  `dataset_balancer.py`/`train.py`/`predict.py`, instale `requirements.txt`.
+  `amaja.py`, `tiles.py`, `ana_mask.py` e `review_tiles.py` não dependem de
+  TensorFlow. Se o erro aparecer em `dataset_balancer.py`/`train.py`/`predict.py`,
+  instale `requirements.txt`.
 - **GPU não é detectada**: confira `nvidia-smi` e a instalação do CUDA compatível com
   `tensorflow==2.20.0` (ver `requirements.txt`).
 - **`--mode predict/export/validate` reclamando de config ausente**: esses modos

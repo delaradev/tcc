@@ -1,8 +1,6 @@
-"""Testes para src/data/dataset_balancer.py: o checador de completude usado para
-decidir se uma etapa de preparo de dados pode ser pulada (Fix #3), e o split
-treino/validação-interna que corrige o vazamento do conjunto de teste para dentro do
-monitoramento de treinamento (ver Trainer.prepare_data). Requer TensorFlow, já que
-dataset_balancer.py importa tf no topo do módulo — pula automaticamente se ausente."""
+"""Testes para src/data/dataset_balancer.py: checador de completude de dataset e
+split treino/validação-interna (ver Trainer.prepare_data). Requer TensorFlow — pula
+automaticamente se ausente."""
 import numpy as np
 import pytest
 

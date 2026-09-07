@@ -1,6 +1,6 @@
-"""Testes para src/data/tiles.py: filtro de tiles nodata (Seção "Fix #10") e
-alinhamento pixel a pixel entre tile de imagem e tile de máscara. Não depende de
-TensorFlow; pula automaticamente se geopandas/rasterio não estiverem instalados."""
+"""Testes para src/data/tiles.py: filtro de tiles nodata e alinhamento pixel a pixel
+entre tile de imagem e tile de máscara. Pula automaticamente se geopandas/rasterio
+não estiverem instalados."""
 import numpy as np
 import pytest
 

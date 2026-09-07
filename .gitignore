@@ -212,7 +212,6 @@ __marimo__/
 # Saídas do Trainer (best_model.keras, tensorboard/, history.json, análises por run)
 /runs/
 
-# Logs do pipeline (main.py grava cpic_pipeline.log; execuções locais podem gravar
-# outros arquivos aqui)
+# Logs do pipeline (main.py grava cpic_pipeline.log)
 /logs/
 cpic_pipeline.log

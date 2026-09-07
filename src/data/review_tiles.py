@@ -39,8 +39,6 @@ def _read_csv_rows(path: Path) -> List[dict]:
     raise last_error
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 def _erode(mask_bin: np.ndarray) -> np.ndarray:
@@ -188,4 +186,6 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - %(levelname)s - %(message)s')
     main()

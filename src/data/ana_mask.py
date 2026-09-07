@@ -9,8 +9,6 @@ import logging
 from shapely.ops import unary_union
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class ANAMaskExtractor:
@@ -100,16 +98,13 @@ class ANAMaskExtractor:
                 "No filtered data. Run filter_by_municipality() first.")
         from shapely import force_2d
 
-        # As geometrias da ANA vêm em EPSG:4674 (graus); é preciso reprojetar para o
-        # CRS métrico de destino ANTES de rasterizar, senão o transform (em metros)
-        # fica completamente desalinhado com as coordenadas (em graus).
+        # Geometrias da ANA vêm em EPSG:4674 (graus); reprojeta para o CRS métrico do
+        # raster de destino antes de rasterizar.
         target_crs = output_crs
         if reference_raster and Path(reference_raster).exists():
             with rasterio.open(reference_raster) as src:
                 target_crs = src.crs
         filtered_metric = self.filtered_data.to_crs(target_crs)
-        # Substitui filtered_data pela versão reprojetada: a partir daqui, bounds e
-        # demais consultas ficam consistentes com o CRS métrico da máscara/raster.
         self.filtered_data = filtered_metric
 
         geometries = []
@@ -221,6 +216,8 @@ def validate_with_ana(ana_path: Path, landsat_tile: Path, municipality: str = "S
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - %(levelname)s - %(message)s')
     import argparse
     parser = argparse.ArgumentParser(
         description="Extract ANA masks for validation")

@@ -45,11 +45,9 @@ def copy_pair(src_img: Path, src_msk: Path, dst_img: Path, dst_msk: Path) -> Non
 
 def pairs_are_ready(dataset_path: Path, img_dirname: str = 'train_images',
                     mask_dirname: str = 'train_masks') -> bool:
-    """Verifica se um diretório de imagem+máscara está de fato completo, não apenas
-    se existe. Usado para decidir se uma etapa de geração de dataset (balanceamento,
-    RandomMix, download da ANA) pode ser pulada com segurança — uma checagem de
-    apenas `.exists()` no diretório trataria uma execução interrompida no meio
-    (ex.: sessão do Colab derrubada) como "já pronta" e nunca a regeneraria."""
+    """Confirma que imagens e máscaras existem em igual número, não só que o
+    diretório existe — usado para decidir se uma etapa de preparo de dados pode ser
+    pulada com segurança."""
     dataset_path = Path(dataset_path)
     img_dir = dataset_path / img_dirname
     msk_dir = dataset_path / mask_dirname
@@ -244,13 +242,10 @@ class CPICDatasetBuilder:
         return pairs
 
     def load_pairs_train_val_split(self, val_fraction: float = 0.1) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
-        """Divide o split 'train' em treino efetivo e validação interna, usada durante
-        o treinamento para monitorar desempenho e orientar early stopping / checkpoint /
-        redução de LR — reproduzindo a metodologia do TCC ("Do conjunto de treinamento,
-        separou-se aleatoriamente 10% para validação"). O split 'valid' do dataset (a
-        pasta valid_images/valid_masks, fornecida pelo Zenodo) NÃO entra aqui: ele é o
-        conjunto de teste final e deve ficar completamente isolado do treinamento e da
-        seleção de hiperparâmetros/checkpoint (ver Trainer.post_training_analysis)."""
+        """Divide o split 'train' em treino efetivo e validação interna (early
+        stopping, checkpoint, redução de LR). O split 'valid' (valid_images/valid_masks)
+        não entra aqui — é o conjunto de teste final, avaliado separadamente em
+        Trainer.post_training_analysis."""
         pairs = self.load_pairs('train')
         if not pairs:
             return [], []

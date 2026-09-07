@@ -93,13 +93,10 @@ class Trainer:
             extra_train_source=randommix_source,
         )
 
-        # Segue a metodologia do TCC: do conjunto de treinamento, 10% é reservado para
-        # validação interna (early stopping / checkpoint / redução de LR). O split
-        # 'valid' do dataset (valid_images/valid_masks, fornecido pelo Zenodo) é o
-        # conjunto de TESTE final e fica isolado — nunca é usado para orientar o
-        # treinamento ou a seleção do melhor checkpoint, apenas na avaliação posterior
-        # (ver post_training_analysis). Usar o próprio conjunto de teste como
-        # validation_data do fit() enviesaria a seleção do modelo (vazamento de dados).
+        # 'valid' (valid_images/valid_masks) é o conjunto de teste final e permanece
+        # isolado do treinamento; a validação usada por early stopping/checkpoint vem
+        # de uma fração separada do próprio conjunto de treino (ver post_training_analysis
+        # para a avaliação sobre 'valid').
         internal_val_fraction = data_config.get('internal_val_fraction', 0.1)
         train_pairs, internal_val_pairs = self.dataset_builder.load_pairs_train_val_split(
             val_fraction=internal_val_fraction)
@@ -108,7 +105,6 @@ class Trainer:
             f"Train pairs: {len(train_pairs)}, Val pairs (internos, {internal_val_fraction:.0%}): "
             f"{len(internal_val_pairs)}, Test pairs (reservado): {len(test_pairs)}")
 
-        # Extrai os nomes originais das imagens de validação interna (ordem do dataset)
         self.val_filenames = [Path(p[0]).stem for p in internal_val_pairs]
 
         self.train_ds = self.dataset_builder.build_dataset_from_pairs(
@@ -175,12 +171,9 @@ class Trainer:
         self.initial_epoch = self._detect_resume_epoch(Path(self.resume_from))
 
     def _detect_resume_epoch(self, resume_path: Path) -> int:
-        """Descobre em qual época retomar. best_model.keras/last_model.keras não têm o
-        número da época no nome (ao contrário de um antigo padrão 'epoch_NNN' que este
-        método ainda reconhece por compatibilidade); a fonte confiável é a última linha
-        de training_log.csv (gravado pelo CSVLogger a cada época) no mesmo diretório do
-        checkpoint. Sem isso, um resume sempre reiniciava a contagem de épocas do zero,
-        o que confundia o EarlyStopping/ReduceLROnPlateau e a numeração no TensorBoard."""
+        """best_model.keras/last_model.keras não carregam a época no nome; a fonte é
+        a última linha de training_log.csv no mesmo diretório. Mantém suporte ao
+        padrão antigo 'epoch_NNN' por compatibilidade com checkpoints já existentes."""
         import re
         match = re.search(r'epoch_(\d+)', str(resume_path))
         if match:
@@ -215,20 +208,15 @@ class Trainer:
                 save_best_only=True,
                 verbose=1
             ),
-            # Checkpoint "last": sobrescreve o mesmo arquivo a cada época (não acumula
-            # um arquivo por época) — dá resiliência a interrupções (Colab/Drive) sem
-            # repetir o problema de espaço em disco que levou a remover os snapshots
-            # periódicos anteriormente. Padrão equivalente ao save_last dos frameworks
-            # mais usados (ex.: PyTorch Lightning) combinado com o "salva o melhor" acima.
+            # Checkpoint "last": sobrescreve o mesmo arquivo a cada época, sem acumular
+            # espaço em disco. Permite retomar de onde parou independente do best_model.
             tf.keras.callbacks.ModelCheckpoint(
                 str(self.output_dir / 'last_model.keras'),
                 save_best_only=False,
                 save_freq='epoch',
                 verbose=0
             ),
-            # Histórico por época gravado incrementalmente (não só ao final do fit()):
-            # sem isso, uma interrupção no meio do treino perdia TODO o histórico de
-            # métricas, já que history.json só era escrito depois que model.fit() retornava.
+            # Histórico incremental por época; history.json só é gravado ao final do fit().
             tf.keras.callbacks.CSVLogger(
                 str(self.output_dir / 'training_log.csv'), append=True),
             tf.keras.callbacks.EarlyStopping(
@@ -248,7 +236,6 @@ class Trainer:
                 log_dir=self.output_dir / 'tensorboard'),
             PredictionSaver(self.sample_ds, str(
                 self.output_dir / 'predictions'), max_samples=4),
-            # Amostras fixas (ex: primeiras 5)
             EpochVisualizationCallback(
                 validation_ds=self.val_ds,
                 output_dir=str(self.output_dir / 'epoch_vis_fixed'),
@@ -257,7 +244,6 @@ class Trainer:
                 sample_strategy='fixed',
                 random_seed=self.config['project']['seed']
             ),
-            # Amostras aleatórias a cada época (ex: outras 5)
             EpochVisualizationCallback(
                 validation_ds=self.val_ds,
                 output_dir=str(self.output_dir / 'epoch_vis_random_each'),
@@ -292,9 +278,6 @@ class Trainer:
 
         logger.info(f"Training completed. Model saved in {self.output_dir}")
 
-    # -------------------------------------------------------------------------
-    # Análises pós-treinamento (solicitadas pelo professor)
-    # -------------------------------------------------------------------------
     def post_training_analysis(self, history: dict):
         logger.info("Running post-training analysis...")
         analysis_dir = self.output_dir / 'analysis'

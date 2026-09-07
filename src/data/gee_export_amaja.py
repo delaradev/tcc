@@ -109,11 +109,8 @@ def export_amaja_composite(
     bsi_max = processed.select('BSI').max().rename('BSI_max')
     green_median = processed.select('GREEN').median().rename('green_median')
 
-    # A projeção final é responsabilidade exclusiva do Export.image.toDrive abaixo
-    # (via crs/scale/region). Chamar .reproject() aqui também forçaria a computação
-    # inteira da ImageCollection a rodar na grade de pixels de destino antes da
-    # redução, o que é lento/propenso a falha em regiões grandes — prática desaconselhada
-    # pela própria documentação do GEE.
+    # Projeção final fica a cargo do Export.image.toDrive (crs/scale/region); chamar
+    # .reproject() aqui forçaria a redução inteira na grade de destino antes da hora.
     composite = ee.Image.cat([evi_max, bsi_max, green_median]).clip(aoi)
 
     n_images = filtered.size().getInfo()

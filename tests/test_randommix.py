@@ -1,8 +1,4 @@
-"""Regressão para o bug crítico corrigido em src/data/randommix.py: a classificação
-de "negativo" usava `fg == 0.0` (exatamente zero), inconsistente com o critério de
-create_balanced_dataset() (`fg < min_fg_ratio`). Qualquer tile com um pouco de SIPC
-abaixo do limiar (0 < fg < min_fg_ratio) era descartado em silêncio — nem virava
-positivo, nem negativo, nem entrava no dataset final. Não depende de TensorFlow."""
+"""Testes para src/data/randommix.py. Não depende de TensorFlow."""
 import numpy as np
 from PIL import Image
 
@@ -16,6 +12,8 @@ def _make_pair(img_dir, mask_dir, name, mask):
 
 
 def test_borderline_foreground_counts_as_negative(tmp_path):
+    """Um tile com 0 < fg < min_fg_ratio deve entrar como negativo, mesmo que o
+    critério interno não seja fg == 0.0 exato — mesma regra de create_balanced_dataset()."""
     img_dir = tmp_path / 'train_images'
     mask_dir = tmp_path / 'train_masks'
     img_dir.mkdir()
@@ -32,7 +30,7 @@ def test_borderline_foreground_counts_as_negative(tmp_path):
     _make_pair(img_dir, mask_dir, 'tile_neg_pure.png',
                np.zeros((64, 64), dtype=np.uint8))
 
-    # fronteira: fg > 0 mas < min_fg_ratio — este é o caso que o bug descartava
+    # fronteira: fg > 0 mas < min_fg_ratio
     borderline_mask = np.zeros((64, 64), dtype=np.uint8)
     borderline_mask[0:2, 0:2] = 255  # 4/4096 ≈ 0.00098 < 0.01
     _make_pair(img_dir, mask_dir, 'tile_borderline.png', borderline_mask)
@@ -48,16 +46,12 @@ def test_borderline_foreground_counts_as_negative(tmp_path):
     )
 
     out_files = sorted((output_path / 'train_images').glob('*.png'))
-    # Devem existir 2 negativos processados: o puro e o de fronteira. Antes da
-    # correção, apenas 1 (o puro) seria contabilizado e o de fronteira desaparecia.
-    assert len(out_files) == 2
+    assert len(out_files) == 2  # negativo puro + fronteira
 
 
 def test_apply_randommix_rotation_is_never_identity():
-    """O Algorithm 1 do artigo especifica rotação de 90/180/270 (nunca 0/identidade)
-    na amostra positiva antes de colar. Usa um padrão assimétrico (gradiente) para
-    que a rotação seja detectável: com crop_size == tile_size, o bloco colado inteiro
-    deve ser sempre uma das 3 rotações não-triviais de img_pos, nunca o próprio img_pos."""
+    """Rotação deve ser sempre 90/180/270 (Algorithm 1), nunca identidade. Usa um
+    gradiente assimétrico para tornar a rotação detectável pixel a pixel."""
     size = 64
     gradient = np.tile(np.arange(size, dtype=np.uint8), (size, 1))
     img_pos = np.stack([gradient, gradient, gradient], axis=-1)
