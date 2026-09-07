@@ -1,53 +1,15 @@
 """
-Construção da base de dados da região da AMAJA (Associação dos Municípios do Alto
-Jacuí/RS), usada na Seção 4.4 do TCC para avaliar a generalização geográfica do modelo.
+Baixa e prepara os dados de referência da AMAJA (Associação dos Municípios do Alto
+Jacuí/RS): limites municipais, área de interesse (AOI) e pivôs centrais da ANA
+filtrados para os municípios da associação. Ver README.md para o pipeline completo
+(composição Landsat via GEE, tiling e revisão humana das máscaras).
 
-Fontes oficiais (públicas, sem necessidade de autenticação):
+Fontes:
   - Lista de municípios: https://amaja.com.br/site/municipios.php (acesso: 2026-09-06)
   - Limites municipais: API de Malhas do IBGE (servicodados.ibge.gov.br/api/v2/malhas)
   - Pivôs georreferenciados: ANA, "Agricultura Irrigada por Pivôs Centrais no Brasil"
-    (mesmo registro citado por Liu et al. 2023), edição mais recente disponível
-    (PivosCentrais2019_AtlasIrrigacao2021, base do Atlas da Irrigação 2ª ed. 2021),
-    distribuída via metadados.snirh.gov.br/geonetwork.
-
-Ordem de execução (equivalente às etapas descritas na Seção 4.1 do TCC):
-
-  1-3. python src/data/amaja.py
-       -> baixa limites municipais (IBGE) + pivôs da ANA, filtra para a AMAJA e salva
-          data/raw/amaja/{amaja_municipios,amaja_aoi,amaja_pivos}.gpkg
-
-  4. [executar no Colab, com GEE autenticado: ee.Authenticate() + ee.Initialize()]
-       from src.data.gee_export_amaja import export_amaja_composite
-       export_amaja_composite(aoi_gpkg='data/raw/amaja/amaja_aoi.gpkg', year=2023)
-     -> composição Landsat 2023 (EVI_max, BSI_max, green_median) exportada para o
-        Google Drive; baixe o .tif resultante para data/raw/amaja/landsat_amaja_2023.tif
-
-  5. python src/data/tiles.py \
-       --tif_path data/raw/amaja/landsat_amaja_2023.tif \
-       --out_dir data/dataset_amaja/valid_images \
-       --mask_gpkg data/raw/amaja/amaja_pivos.gpkg \
-       --mask_out_dir data/dataset_amaja/valid_masks \
-       --normalize percentile
-     -> pares de tiles 512x512 imagem+máscara, alinhados pixel a pixel, no mesmo
-        formato de valid_images/valid_masks usado pelo dataset de treinamento
-
-  6. python src/data/review_tiles.py generate \
-       --images_dir data/dataset_amaja/valid_images \
-       --masks_dir data/dataset_amaja/valid_masks \
-       --output_dir data/validation/amaja_review
-     -> gera overlays (composição + contorno da máscara) e um manifesto CSV para a
-        validação humana (Seção 4.1 do TCC); após revisar e marcar decision=keep/
-        discard/fix no CSV, rode:
-       python src/data/review_tiles.py apply \
-         --images_dir data/dataset_amaja/valid_images \
-         --masks_dir data/dataset_amaja/valid_masks \
-         --manifest data/validation/amaja_review/review_manifest.csv \
-         --output_images_dir data/dataset_amaja_final/valid_images \
-         --output_masks_dir data/dataset_amaja_final/valid_masks
-
-  7. python src/main.py --mode validate --config config/config_amaja.yaml \
-       --model runs/<run>/best_model.keras
-     -> métricas de generalização geográfica (IoU, Dice, Precision, Recall, F1)
+    (mesmo registro citado por Liu et al. 2023), edição PivosCentrais2019_AtlasIrrigacao2021
+    (Atlas da Irrigação, 2ª ed. 2021), distribuída via metadados.snirh.gov.br/geonetwork.
 """
 import argparse
 import json

@@ -38,11 +38,10 @@ def combined_loss(alpha: float = 0.5, beta: float = 0.5):
 
 
 def build_loss(loss_config: dict):
-    """Seleciona a função de perda por loss_config['name'], entre as opções
-    comparadas no TCC (Seção 4.3): tversky, dice, bce. alpha/beta se aplicam só a
-    tversky (peso de FP/FN); combined_loss usa um par alpha/beta com significado
-    diferente (peso tversky-vs-bce) e por isso fica fora deste dispatch — importe-a
-    diretamente se for usá-la."""
+    """Seleciona a função de perda por loss_config['name']: tversky, dice ou bce.
+    alpha/beta se aplicam só a tversky (peso de FP/FN); combined_loss usa um par
+    alpha/beta com significado diferente (peso tversky-vs-bce) e por isso fica fora
+    deste dispatch — importe-a diretamente se for usá-la."""
     name = loss_config.get('name', 'tversky')
     if name == 'tversky':
         return tversky_loss(alpha=loss_config.get('alpha', 0.7), beta=loss_config.get('beta', 0.3))

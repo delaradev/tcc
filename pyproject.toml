@@ -2,7 +2,7 @@
 name = "cpic-brasil"
 version = "3.0.0"
 description = "Detecção de Sistemas de Irrigação por Pivô Central (SIPC) via Deep Learning, reproduzindo Liu et al. (2023) e avaliando generalização geográfica na região da AMAJA/RS"
-requires-python = ">=3.10" # venv local do projeto usa 3.12.9; Colab costuma trazer versão recente própria
+requires-python = ">=3.10,<3.13" # tensorflow==2.20.0 não tem wheel para Python 3.13+
 readme = "README.md"
 
 # Este projeto não é instalado via pip: os scripts em src/ são executados a partir da

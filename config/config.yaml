@@ -13,19 +13,19 @@ data:
   min_fg_ratio: 0.003 # não especificado no artigo nem no TCC; limiar de engenharia
   desired_pos_ratio: 0.7 # não especificado no artigo nem no TCC; sem relação com o split 70/30 treino/teste (esse vem do dataset do Zenodo, já particionado por Liu et al.)
   max_train_samples: 20000
-  internal_val_fraction: 0.1 # fração do treino separada para validação interna (TCC, Seção 4.2); valid_images/valid_masks é o conjunto de teste, reservado
+  internal_val_fraction: 0.1 # fração do treino separada para validação interna (early stopping/checkpoint); valid_images/valid_masks é o conjunto de teste, reservado
 
 model:
   img_size: 512
-  unet_base_filters: 64 # busca de hiperparâmetros do TCC (32/64/128); coincide com Liu et al. (Fig. 7: 64,128,256,512,1024)
+  unet_base_filters: 64 # testado entre 32/64/128; coincide com a progressão de filtros de Liu et al. (Fig. 7: 64,128,256,512,1024)
   input_channels: 3
   output_channels: 1
 
 training:
-  # batch_size/epochs/learning_rate/optimizer/early_stopping_patience: combinações
-  # vencedoras da busca de hiperparâmetros do TCC (Seção 4.3). O artigo de Liu et al.
-  # não especifica batch size nem early stopping; alguns valores coincidem (lr=1e-4,
-  # RMSprop, epochs=100) por resultado da busca, não por cópia direta do artigo.
+  # batch_size/epochs/learning_rate/optimizer/early_stopping_patience: melhor
+  # combinação encontrada em busca de hiperparâmetros própria. Liu et al. não
+  # especifica batch size nem early stopping; lr=1e-4/RMSprop/epochs=100 coincidem
+  # com o artigo por resultado da busca, não por cópia direta.
   batch_size: 16 # testado entre 8/16/32; treino em GPU A100 80GB
   epochs: 100 # testado entre 25/50/75/100; teto de épocas, com early stopping
   learning_rate: 0.0001 # testado entre 1e-3/1e-4/5e-5
@@ -33,7 +33,7 @@ training:
   early_stopping_patience: 15
   reduce_lr_patience: 5 # não especificado no artigo nem no TCC; limiar de engenharia
   loss:
-    name: tversky # tversky | dice | bce — as 3 opções testadas (TCC, Seção 4.3)
+    name: tversky # tversky | dice | bce — as 3 funções de perda suportadas
     # alpha/beta: nem o artigo (a comparação de hiperparâmetros de loss está na Tabela
     # S1 suplementar, não publicada no PDF principal) nem o TCC especificam esses
     # pesos; 0.7/0.3 penaliza mais falsos negativos e é o valor de engenharia adotado.

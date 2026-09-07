@@ -29,6 +29,9 @@ Municípios do Alto Jacuí, RS) — objeto do TCC deste repositório.
 
 ```
 tcc_code/
+├── .github/
+│   └── workflows/ci.yml       # Lint (ruff) + testes a cada push/PR na main
+│
 ├── config/
 │   ├── config.yaml            # Config principal (treino em cima do dataset de Liu et al.)
 │   └── config_amaja.yaml      # Config para validar o modelo treinado na base da AMAJA
@@ -67,8 +70,9 @@ tcc_code/
 │
 ├── requirements.txt             # Dependências principais
 ├── requirements-gee.txt         # Extra: earthengine-api/geemap (só p/ gee_export_amaja.py)
-├── requirements-dev.txt         # Extra: pytest
-├── pyproject.toml               # Config do pytest
+├── requirements-dev.txt         # Extra: pytest, ruff
+├── pyproject.toml               # Config do pytest e do ruff
+├── LICENSE                      # MIT
 │
 ├── data/                        # Dados (gerado localmente; fora do git)
 ├── runs/                        # Saída de cada treino (fora do git)
@@ -84,10 +88,18 @@ etapa de preparo de dados da AMAJA num ambiente separado do treino.
 
 ## Instalação
 
-Requer Python >= 3.10 (o venv local do projeto usa 3.12.9).
+Requer Python 3.10–3.12. `tensorflow==2.20.0` (fixado em `requirements.txt`) não tem
+wheel para versões de Python mais novas que 3.12 — `pip install tensorflow` falha com
+"No matching distribution found" se o Python do sistema for 3.13+. No Windows, se o
+único Python instalado for mais novo que isso, instale o 3.12 antes de criar o venv:
+
+```powershell
+winget install --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
+```
 
 ```bash
-python -m venv venv
+py -3.12 -m venv venv        # Windows, com múltiplas versões de Python instaladas
+# ou: python3.12 -m venv venv   # Linux/Mac
 # Windows: venv\Scripts\activate | Linux/Mac: source venv/bin/activate
 
 pip install -r requirements.txt
@@ -100,6 +112,10 @@ Verificar GPU (opcional):
 ```bash
 python -c "import tensorflow as tf; print('GPU:', tf.config.list_physical_devices('GPU'))"
 ```
+
+No Colab isso não é necessário — o ambiente já traz uma versão de Python compatível.
+No Windows nativo (fora do Colab/WSL2), `tensorflow>=2.11` só enxerga CPU mesmo com
+GPU NVIDIA presente; suporte a GPU nessa configuração exige WSL2 ou o plugin DirectML.
 
 ---
 
@@ -152,9 +168,9 @@ python src/main.py --mode export --config config/config.yaml \
 
 ## Pipeline 2 — Construir a base da AMAJA e validar generalização
 
-Reproduz a Seção 4.4 do TCC: avaliar o modelo treinado acima numa região geográfica
-nunca vista (os 20 municípios da AMAJA/RS), com máscaras derivadas de dados oficiais
-da ANA e validadas visualmente.
+Avalia o modelo treinado no Pipeline 1 numa região geográfica nunca vista pelo
+treinamento (os 20 municípios da AMAJA/RS), com máscaras de referência derivadas de
+dados oficiais da ANA e revisadas visualmente antes da avaliação.
 
 ### 1–3. Municípios, AOI e pivôs da ANA (roda localmente, sem GPU/GEE)
 ```bash
@@ -220,7 +236,7 @@ Principais chaves de `config/config.yaml` (comentadas no próprio arquivo):
 | `data` | `desired_pos_ratio` | Proporção positivo/negativo alvo no balanceamento |
 | `data` | `internal_val_fraction` | Fração do treino reservada para validação interna |
 | `training` | `randommix` / `randommix_prob` | Ativa RandomMix e fração dos negativos mesclados |
-| `training` | `loss.name` | `tversky` \| `dice` \| `bce` — as 3 funções comparadas no TCC |
+| `training` | `loss.name` | `tversky` \| `dice` \| `bce` — as 3 funções de perda suportadas |
 | `training` | `loss.alpha` / `loss.beta` | Peso de FP/FN no Tversky loss (só se `loss.name: tversky`) |
 | `gpu` | `memory_growth` / `memory_limit_mb` | Mutuamente exclusivos — `memory_growth` tem precedência |
 
@@ -245,9 +261,8 @@ rodam em qualquer ambiente. Os que dependem (`test_dataset_balancer.py`,
 `test_trainer_integration.py`) pulam automaticamente se TensorFlow não estiver
 instalado.
 
-Lint (`ruff`, config em `pyproject.toml`):
+Lint (`ruff`, config em `pyproject.toml`, já incluído em `requirements-dev.txt`):
 ```bash
-pip install ruff
 ruff check src tests
 ```
 
@@ -262,8 +277,11 @@ a cada push/PR na `main`.
   `amaja.py`, `tiles.py` e `review_tiles.py` não dependem de TensorFlow. Se o erro
   aparecer em `dataset_balancer.py`/`train.py`/`predict.py`, instale
   `requirements.txt`.
-- **GPU não é detectada**: confira `nvidia-smi` e a instalação do CUDA compatível com
-  `tensorflow==2.20.0` (ver `requirements.txt`).
+- **`pip install tensorflow` falha com "No matching distribution found"**: a versão do
+  Python é 3.13 ou mais nova. Instale Python 3.12 e recrie o venv (ver Instalação).
+- **GPU não é detectada**: em Linux/Colab, confira `nvidia-smi` e a instalação do CUDA
+  compatível com `tensorflow==2.20.0` (ver `requirements.txt`). Em Windows nativo, isso
+  é esperado — `tensorflow>=2.11` não tem suporte a GPU fora de WSL2/DirectML.
 - **`--mode predict/export/validate` reclamando de config ausente**: esses modos
   sempre esperam um `--config` válido (usado para reconstruir a loss/hiperparâmetros
   do modelo salvo).

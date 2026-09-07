@@ -1,4 +1,4 @@
-"""Model architecture modules"""
+"""Arquitetura do modelo e funções de perda."""
 
 from src.models.losses import (
     build_loss,

@@ -1,16 +1,15 @@
 """
-Apoio à validação humana das máscaras derivadas da ANA para a região da AMAJA (Seção
-4.1 do TCC: "máscaras ... construídas a partir dos dados oficiais da ANA, complementadas
-por validação humana"). O cadastro da ANA é atualizado em intervalos de ~5 anos, então
-pivôs novos podem faltar e pivôs desativados podem persistir — a checagem visual contra
-a própria composição Landsat é o que corrige isso.
+Apoio à validação humana das máscaras da AMAJA derivadas do cadastro da ANA. O cadastro
+é atualizado em intervalos de ~5 anos, então pivôs novos podem faltar e pivôs
+desativados podem persistir na máscara gerada — a checagem visual contra a própria
+composição Landsat é o que corrige isso.
 
-Este script NÃO decide sozinho quais máscaras estão corretas: ele gera, para cada tile
+Este script não decide sozinho quais máscaras estão corretas: gera, para cada tile
 imagem+máscara, uma miniatura de comparação lado a lado e um manifesto CSV para que o
 revisor humano registre a decisão (mantém, descarta, ou precisa de correção manual).
 
 Uso (após gerar os tiles pareados com tiles.py):
-    python src/data/review_tiles.py \
+    python src/data/review_tiles.py generate \
         --images_dir data/dataset_amaja/valid_images \
         --masks_dir data/dataset_amaja/valid_masks \
         --output_dir data/validation/amaja_review

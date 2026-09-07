@@ -1,13 +1,11 @@
 """
 Exportação da composição anual Landsat (2023) para a região da AMAJA via Google Earth
-Engine, replicando exatamente as 3 bandas usadas por Liu et al. (2023) e adotadas no
-TCC: EVI_max, BSI_max e green_median.
+Engine, replicando as 3 bandas de Liu et al. (2023): EVI_max, BSI_max, green_median.
 
-IMPORTANTE: este script depende da API do Earth Engine e de uma conta Google autorizada
-com um projeto GEE (ee.Authenticate() abre um fluxo OAuth interativo) — por isso NÃO
-pode ser executado neste ambiente e deve ser rodado em uma célula do Colab, exatamente
-como descrito na Seção 4.1 do TCC ("foi desenvolvido um script para extrair e processar
-imagens do satélite Landsat"). Uso típico em uma célula do Colab:
+Depende da API do Earth Engine e de uma conta Google autorizada com um projeto GEE.
+`ee.Authenticate()` abre um fluxo OAuth interativo em navegador, então este script não
+funciona como script standalone (`python gee_export_amaja.py`) nem em pipelines
+não-interativos — precisa ser executado célula a célula em um notebook Jupyter/Colab:
 
     !pip install -q earthengine-api geemap
     import ee
@@ -21,20 +19,19 @@ imagens do satélite Landsat"). Uso típico em uma célula do Colab:
         drive_folder='cpic_amaja',
     )
 
-O resultado é um GeoTIFF de 3 bandas (na ordem EVI_max, BSI_max, green_median, igual à
-base de treinamento de Liu et al.) exportado para o Google Drive, em EPSG:31982 e 30 m
-de resolução — pronto para ser recortado em tiles 512x512 com src/data/tiles.py.
+Resultado: GeoTIFF de 3 bandas (EVI_max, BSI_max, green_median) exportado para o Google
+Drive, em EPSG:31982 e 30 m de resolução — pronto para tiling com src/data/tiles.py.
 
-Índices espectrais (mesmas fórmulas usadas por Liu et al., 2023 - Tabela 2):
+Índices espectrais (Liu et al., 2023, Tabela 2):
     EVI = 2.5 * (NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1)          [Huete et al., 1997]
-    BSI = ((SWIR1+RED) - (NIR+BLUE)) / ((SWIR1+RED) + (NIR+BLUE))   [Diek et al., 2017]
+    BSI = ((SWIR2+RED) - (NIR+BLUE)) / ((SWIR2+RED) + (NIR+BLUE))   [Diek et al., 2017]
 
-NOTA: a Tabela 2 impressa de Liu et al. (2023) grafa essa fórmula com SWIR2, não SWIR1.
-Mantemos SWIR1 aqui por ser a formulação padrão de Diek et al. (2017) na literatura e
-porque a mesma tabela do artigo tem outro erro de subscrito confirmado (NDSMI com
-denominador swir2+swir2, que não fecha algebricamente) — indício de erro tipográfico
-na publicação, não de uma variante intencional. Se a banca cobrar fidelidade literal ao
-texto impresso do artigo, este é o ponto a revisar.
+BSI usa SWIR2 (SR_B7), exatamente como impresso na Tabela 2 do artigo — não a variante
+mais comum na literatura (que usa SWIR1). A prioridade aqui é bater com a banda que
+gerou o dataset de treino de Liu et al. (train_images/train_masks do Zenodo), já que o
+teste de generalização na AMAJA só é válido se a composição da AMAJA usar a mesma
+receita de bandas do treino; usar SWIR1 introduziria uma diferença de distribuição de
+entrada que se confundiria com a diferença geográfica que o experimento quer medir.
 """
 from typing import Optional
 
@@ -64,7 +61,7 @@ def _add_indices(image):
     green = image.select('SR_B3')
     red = image.select('SR_B4')
     nir = image.select('SR_B5')
-    swir1 = image.select('SR_B6')
+    swir2 = image.select('SR_B7')
 
     evi = image.expression(
         '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)',
@@ -72,8 +69,8 @@ def _add_indices(image):
     ).rename('EVI')
 
     bsi = image.expression(
-        '((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE) + 1e-9)',
-        {'SWIR1': swir1, 'RED': red, 'NIR': nir, 'BLUE': blue}
+        '((SWIR2 + RED) - (NIR + BLUE)) / ((SWIR2 + RED) + (NIR + BLUE) + 1e-9)',
+        {'SWIR2': swir2, 'RED': red, 'NIR': nir, 'BLUE': blue}
     ).rename('BSI')
 
     return image.addBands([evi, bsi]).addBands(green.rename('GREEN'))

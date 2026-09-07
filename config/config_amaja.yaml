@@ -3,7 +3,7 @@ project:
   version: 3.0.0
   seed: 42
 
-# Config para validar a generalização geográfica na região da AMAJA (Seção 4.4 do TCC).
+# Config para validar a generalização geográfica na região da AMAJA.
 # Só precisa de data.balanced_path (aponta para os tiles gerados por src/data/tiles.py
 # e revisados em src/data/review_tiles.py) e training.loss (alpha/beta do modelo
 # treinado, usados para reconstruir a loss como custom_object ao carregar o .keras).
