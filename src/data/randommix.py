@@ -1,8 +1,13 @@
 import random
-import numpy as np
 from pathlib import Path
 from typing import Tuple
+
+import numpy as np
 from PIL import Image
+
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class RandomMixAugmentation:
@@ -115,7 +120,7 @@ def generate_randommix_dataset(
         Image.fromarray(new_mask.squeeze().astype(
             np.uint8)).save(out_msk_dir / new_name)
 
-    print(
+    logger.info(
         f"RandomMix dataset generated: {n_mixed}/{len(negatives)} mixed samples at {output_path}")
 
 

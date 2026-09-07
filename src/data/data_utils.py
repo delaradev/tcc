@@ -1,8 +1,7 @@
+import logging
 import zipfile
-import shutil
 from pathlib import Path
 from typing import Optional
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +52,8 @@ def verify_dataset_structure(dataset_path: Path = Path("data/dataset")) -> bool:
         valid_images = len(list((dataset_path / 'valid_images').glob('*.png')))
         valid_masks = len(list((dataset_path / 'valid_masks').glob('*.png')))
         logger.info(
-            f"Sample counts: train_images={train_images}, train_masks={train_masks}, valid_images={valid_images}, valid_masks={valid_masks}")
+            f"Sample counts: train_images={train_images}, train_masks={train_masks}, "
+            f"valid_images={valid_images}, valid_masks={valid_masks}")
     else:
         logger.warning(
             "Dataset structure is incomplete. Run extract_zenodo_dataset() first.")
@@ -106,8 +106,8 @@ if __name__ == "__main__":
         verify_dataset_structure()
     if args.info:
         info = get_dataset_info()
-        print("Dataset Information:")
+        logger.info("Dataset Information:")
         for key, value in info.items():
-            print(f"  {key}: {value}")
+            logger.info(f"  {key}: {value}")
     if not any([args.extract, args.verify, args.info]):
-        print("Usage: python data_utils.py --extract --verify --info")
+        logger.info("Usage: python data_utils.py --extract --verify --info")

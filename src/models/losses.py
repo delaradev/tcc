@@ -35,3 +35,30 @@ def combined_loss(alpha: float = 0.5, beta: float = 0.5):
     def loss(y_true, y_pred):
         return alpha * tversky(y_true, y_pred) + beta * bce(y_true, y_pred)
     return loss
+
+
+def build_loss(loss_config: dict):
+    """Seleciona a função de perda por loss_config['name'], entre as opções
+    comparadas no TCC (Seção 4.3): tversky, dice, bce. alpha/beta se aplicam só a
+    tversky (peso de FP/FN); combined_loss usa um par alpha/beta com significado
+    diferente (peso tversky-vs-bce) e por isso fica fora deste dispatch — importe-a
+    diretamente se for usá-la."""
+    name = loss_config.get('name', 'tversky')
+    if name == 'tversky':
+        return tversky_loss(alpha=loss_config.get('alpha', 0.7), beta=loss_config.get('beta', 0.3))
+    if name == 'dice':
+        return dice_loss()
+    if name in ('bce', 'binary_crossentropy'):
+        return tf.keras.losses.BinaryCrossentropy()
+    raise ValueError(f"training.loss.name desconhecido: {name!r}")
+
+
+def build_loss_custom_objects(loss_config: dict) -> dict:
+    """custom_objects para tf.keras.models.load_model: registra as losses
+    serializáveis por nome, mais 'loss' apontando para a configurada atualmente
+    (Keras serializa a loss de compile() sob esse nome genérico)."""
+    return {
+        'tversky_loss': tversky_loss(alpha=loss_config.get('alpha', 0.7), beta=loss_config.get('beta', 0.3)),
+        'dice_loss': dice_loss(),
+        'loss': build_loss(loss_config),
+    }

@@ -1,10 +1,11 @@
-import tensorflow as tf
-from pathlib import Path
-import numpy as np
 import json
-import matplotlib.pyplot as plt
 import random
+from pathlib import Path
 from typing import List
+
+import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
 
 
 class PredictionSaver(tf.keras.callbacks.Callback):
@@ -55,20 +56,6 @@ class PredictionSaver(tf.keras.callbacks.Callback):
         Image.fromarray(msk).save(path)
 
 
-class GPUMemoryMonitor(tf.keras.callbacks.Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        import subprocess
-        try:
-            result = subprocess.run(
-                ['nvidia-smi', '--query-gpu=memory.used', '--format=csv,noheader'],
-                capture_output=True, text=True
-            )
-            mem_used = result.stdout.strip()
-            print(f"GPU Memory: {mem_used}")
-        except:
-            pass
-
-
 class EpochVisualizationCallback(tf.keras.callbacks.Callback):
     """
     Salva a cada época previsões e métricas para amostras do dataset de validação.
@@ -116,7 +103,7 @@ class EpochVisualizationCallback(tf.keras.callbacks.Callback):
             indices = rng.sample(range(self._total), min(
                 self.num_samples, self._total))
         else:
-            epoch_seed = self.random_seed + (epoch if epoch else 0)
+            epoch_seed = self.random_seed + epoch
             rng = random.Random(epoch_seed)
             indices = rng.sample(range(self._total), min(
                 self.num_samples, self._total))

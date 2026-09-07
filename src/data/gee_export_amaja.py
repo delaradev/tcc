@@ -28,8 +28,14 @@ de resolução — pronto para ser recortado em tiles 512x512 com src/data/tiles
 Índices espectrais (mesmas fórmulas usadas por Liu et al., 2023 - Tabela 2):
     EVI = 2.5 * (NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1)          [Huete et al., 1997]
     BSI = ((SWIR1+RED) - (NIR+BLUE)) / ((SWIR1+RED) + (NIR+BLUE))   [Diek et al., 2017]
+
+NOTA: a Tabela 2 impressa de Liu et al. (2023) grafa essa fórmula com SWIR2, não SWIR1.
+Mantemos SWIR1 aqui por ser a formulação padrão de Diek et al. (2017) na literatura e
+porque a mesma tabela do artigo tem outro erro de subscrito confirmado (NDSMI com
+denominador swir2+swir2, que não fecha algebricamente) — indício de erro tipográfico
+na publicação, não de uma variante intencional. Se a banca cobrar fidelidade literal ao
+texto impresso do artigo, este é o ponto a revisar.
 """
-from pathlib import Path
 from typing import Optional
 
 
@@ -40,7 +46,6 @@ def _load_aoi_geojson(aoi_gpkg: str) -> dict:
 
 
 def _mask_landsat_c2l2(image):
-    import ee
     qa = image.select('QA_PIXEL')
     dilated_cloud = 1 << 1
     cirrus = 1 << 2
@@ -55,7 +60,6 @@ def _mask_landsat_c2l2(image):
 
 
 def _add_indices(image):
-    import ee
     blue = image.select('SR_B2')
     green = image.select('SR_B3')
     red = image.select('SR_B4')
@@ -130,7 +134,7 @@ def export_amaja_composite(
     )
     task.start()
     print(f"Exportação iniciada: task id = {task.id}")
-    print(f"Acompanhe em https://code.earthengine.google.com/tasks")
+    print("Acompanhe em https://code.earthengine.google.com/tasks")
     print(f"Ao concluir, o arquivo estará em: Google Drive/{drive_folder}/{file_prefix}.tif")
     return task
 

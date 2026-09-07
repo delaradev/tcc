@@ -1,10 +1,11 @@
-import tensorflow as tf
-import shutil
 import random
+import shutil
 from pathlib import Path
-from typing import List, Tuple, Optional
-import numpy as np
+from typing import List, Optional, Tuple
+
 import cv2
+import numpy as np
+import tensorflow as tf
 
 from src.utils.logging import get_logger
 
@@ -241,7 +242,9 @@ class CPICDatasetBuilder:
         self._pairs_cache[split] = pairs
         return pairs
 
-    def load_pairs_train_val_split(self, val_fraction: float = 0.1) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
+    def load_pairs_train_val_split(
+        self, val_fraction: float = 0.1
+    ) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
         """Divide o split 'train' em treino efetivo e validação interna (early
         stopping, checkpoint, redução de LR). O split 'valid' (valid_images/valid_masks)
         não entra aqui — é o conjunto de teste final, avaliado separadamente em

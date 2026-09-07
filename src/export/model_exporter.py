@@ -4,7 +4,7 @@ from typing import List, Optional
 import tensorflow as tf
 import yaml
 
-from src.models.losses import tversky_loss
+from src.models.losses import build_loss_custom_objects
 from src.training.metrics import dice_score, iou_score, precision_score, recall_score
 from src.utils.logging import get_logger
 
@@ -21,15 +21,14 @@ class CPICExporter:
             with open(config_path, 'r') as f:
                 config = yaml.safe_load(f)
         loss_config = (config or {}).get(
-            'training', {}).get('loss', {'alpha': 0.7, 'beta': 0.3})
+            'training', {}).get('loss', {'name': 'tversky', 'alpha': 0.7, 'beta': 0.3})
 
         custom_objects = {
-            'tversky_loss': tversky_loss(alpha=loss_config['alpha'], beta=loss_config['beta']),
+            **build_loss_custom_objects(loss_config),
             'iou_score': iou_score(),
             'dice_score': dice_score(),
             'precision_score': precision_score(),
             'recall_score': recall_score(),
-            'loss': tversky_loss(alpha=loss_config['alpha'], beta=loss_config['beta']),
         }
 
         logger.info(f"Loading model from {self.model_path}")

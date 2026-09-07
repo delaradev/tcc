@@ -47,8 +47,7 @@ tcc_code/
 │   │   ├── tiles.py            # Recorte de GeoTIFF em tiles 512x512 (+ máscara pareada)
 │   │   ├── amaja.py            # Municípios/AOI da AMAJA + download e filtro de pivôs ANA
 │   │   ├── gee_export_amaja.py # Exportação Landsat via Google Earth Engine (roda no Colab)
-│   │   ├── review_tiles.py     # Apoio à validação humana das máscaras da AMAJA
-│   │   └── ana_mask.py         # Rasterização de pivôs ANA em máscara, p/ um único município
+│   │   └── review_tiles.py     # Apoio à validação humana das máscaras da AMAJA
 │   ├── models/
 │   │   ├── unet.py             # Arquitetura U-Net (Fig. 7 do artigo)
 │   │   └── losses.py           # Tversky, Dice, combined loss
@@ -60,8 +59,6 @@ tcc_code/
 │   │   └── predict.py          # Predição em arquivo/diretório + validação em split
 │   ├── export/
 │   │   └── model_exporter.py   # Exporta .keras -> SavedModel + TFLite
-│   ├── validate/
-│   │   └── ana_validator.py    # Compara um raster de predição contra máscara ANA
 │   └── utils/
 │       ├── gpu_utils.py        # Configuração de GPU/mixed precision
 │       └── logging.py
@@ -79,7 +76,7 @@ tcc_code/
 ```
 
 Os módulos em `src/data/` que não dependem de TensorFlow (`amaja.py`, `tiles.py`,
-`ana_mask.py`, `review_tiles.py`, `gee_export_amaja.py`) podem ser importados e
+`review_tiles.py`, `gee_export_amaja.py`) podem ser importados e
 executados isoladamente, sem precisar do TensorFlow instalado — útil para rodar a
 etapa de preparo de dados da AMAJA num ambiente separado do treino.
 
@@ -223,7 +220,8 @@ Principais chaves de `config/config.yaml` (comentadas no próprio arquivo):
 | `data` | `desired_pos_ratio` | Proporção positivo/negativo alvo no balanceamento |
 | `data` | `internal_val_fraction` | Fração do treino reservada para validação interna |
 | `training` | `randommix` / `randommix_prob` | Ativa RandomMix e fração dos negativos mesclados |
-| `training` | `loss.alpha` / `loss.beta` | Hiperparâmetros do Tversky loss |
+| `training` | `loss.name` | `tversky` \| `dice` \| `bce` — as 3 funções comparadas no TCC |
+| `training` | `loss.alpha` / `loss.beta` | Peso de FP/FN no Tversky loss (só se `loss.name: tversky`) |
 | `gpu` | `memory_growth` / `memory_limit_mb` | Mutuamente exclusivos — `memory_growth` tem precedência |
 
 `config/config_amaja.yaml` é bem mais enxuto: `--mode predict/export/validate` carregam
@@ -243,16 +241,27 @@ pytest tests/
 
 Testes em módulos que não dependem de TensorFlow (`test_randommix.py`, `test_tiles.py`)
 rodam em qualquer ambiente. Os que dependem (`test_dataset_balancer.py`,
-`test_gpu_utils.py`) pulam automaticamente se TensorFlow não estiver instalado.
+`test_gpu_utils.py`, `test_unet.py`, `test_losses_metrics.py`,
+`test_trainer_integration.py`) pulam automaticamente se TensorFlow não estiver
+instalado.
+
+Lint (`ruff`, config em `pyproject.toml`):
+```bash
+pip install ruff
+ruff check src tests
+```
+
+O workflow em `.github/workflows/ci.yml` roda lint + testes (com TensorFlow instalado)
+a cada push/PR na `main`.
 
 ---
 
 ## Solução de problemas
 
 - **`ModuleNotFoundError: No module named 'tensorflow'` ao rodar um script de dados**:
-  `amaja.py`, `tiles.py`, `ana_mask.py` e `review_tiles.py` não dependem de
-  TensorFlow. Se o erro aparecer em `dataset_balancer.py`/`train.py`/`predict.py`,
-  instale `requirements.txt`.
+  `amaja.py`, `tiles.py` e `review_tiles.py` não dependem de TensorFlow. Se o erro
+  aparecer em `dataset_balancer.py`/`train.py`/`predict.py`, instale
+  `requirements.txt`.
 - **GPU não é detectada**: confira `nvidia-smi` e a instalação do CUDA compatível com
   `tensorflow==2.20.0` (ver `requirements.txt`).
 - **`--mode predict/export/validate` reclamando de config ausente**: esses modos

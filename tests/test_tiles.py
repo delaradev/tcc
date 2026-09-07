@@ -7,8 +7,8 @@ import pytest
 gpd = pytest.importorskip('geopandas')
 rasterio = pytest.importorskip('rasterio')
 
-from shapely.geometry import box
 from rasterio.transform import from_origin
+from shapely.geometry import box
 
 from src.data.tiles import TileGenerator
 
@@ -46,7 +46,7 @@ def test_nodata_tiles_are_skipped(tmp_path):
 
 def test_mask_tile_aligns_with_known_geometry(tmp_path):
     raster_path = tmp_path / 'source.tif'
-    transform = _write_raster(raster_path, width=1024, height=1024)
+    _write_raster(raster_path, width=1024, height=1024)
 
     # Um quadrado conhecido no canto superior-esquerdo do raster (mundo -> pixel:
     # x=0..300, y=0..300 a partir do transform from_origin(0, height*30, 30, 30)).

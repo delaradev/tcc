@@ -1,5 +1,6 @@
-import tensorflow as tf
 from typing import Tuple
+
+import tensorflow as tf
 
 
 def conv_block(x: tf.Tensor, filters: int, name: str) -> tf.Tensor:

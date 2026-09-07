@@ -24,6 +24,8 @@ from typing import List
 import numpy as np
 from PIL import Image
 
+logger = logging.getLogger(__name__)
+
 
 def _read_csv_rows(path: Path) -> List[dict]:
     """Lê o manifesto tentando encodings comuns, nessa ordem: utf-8-sig (o que este
@@ -37,8 +39,6 @@ def _read_csv_rows(path: Path) -> List[dict]:
         except UnicodeDecodeError as e:
             last_error = e
     raise last_error
-
-logger = logging.getLogger(__name__)
 
 
 def _erode(mask_bin: np.ndarray) -> np.ndarray:

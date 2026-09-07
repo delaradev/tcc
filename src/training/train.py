@@ -1,20 +1,24 @@
 import json
-import yaml
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict
-import numpy as np
-import matplotlib.pyplot as plt
-import tensorflow as tf
-from PIL import Image
+from typing import List, Optional
 
-from src.models.unet import build_unet, get_model_summary
-from src.models.losses import tversky_loss
-from src.training.metrics import iou_score, dice_score, precision_score, recall_score
-from src.training.callbacks import PredictionSaver, EpochVisualizationCallback
-from src.data.dataset_balancer import CPICDatasetBuilder, create_balanced_dataset, pairs_are_ready
+import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
+import yaml
+
+from src.data.dataset_balancer import (
+    CPICDatasetBuilder,
+    create_balanced_dataset,
+    pairs_are_ready,
+)
 from src.data.randommix import generate_randommix_dataset
+from src.models.losses import build_loss, build_loss_custom_objects
+from src.models.unet import build_unet, get_model_summary
+from src.training.callbacks import EpochVisualizationCallback, PredictionSaver
+from src.training.metrics import dice_score, iou_score, precision_score, recall_score
 from src.utils.gpu_utils import configure_gpu, get_gpu_info
 from src.utils.logging import get_logger
 
@@ -56,7 +60,8 @@ class Trainer:
         balanced_path = Path(data_config['balanced_path'])
         if not pairs_are_ready(balanced_path, 'train_images', 'train_masks'):
             logger.info(
-                f"Balanced dataset not found/incomplete at {balanced_path}, building it from {data_config['dataset_path']}")
+                f"Balanced dataset not found/incomplete at {balanced_path}, "
+                f"building it from {data_config['dataset_path']}")
             create_balanced_dataset(
                 src_root=data_config['dataset_path'],
                 dst_root=str(balanced_path),
@@ -130,9 +135,7 @@ class Trainer:
         logger.info(get_model_summary(self.model))
 
         train_config = self.config['training']
-        loss_config = train_config['loss']
-        loss_fn = tversky_loss(
-            alpha=loss_config['alpha'], beta=loss_config['beta'])
+        loss_fn = build_loss(train_config['loss'])
 
         metrics = [
             iou_score(),
@@ -156,14 +159,12 @@ class Trainer:
                 f"Resume path not found: {self.resume_from}")
 
         logger.info(f"Resuming training from {self.resume_from}")
-        loss_config = self.config['training']['loss']
         custom_objects = {
-            'tversky_loss': tversky_loss(alpha=loss_config['alpha'], beta=loss_config['beta']),
+            **build_loss_custom_objects(self.config['training']['loss']),
             'iou_score': iou_score(),
             'dice_score': dice_score(),
             'precision_score': precision_score(),
             'recall_score': recall_score(),
-            'loss': tversky_loss(alpha=loss_config['alpha'], beta=loss_config['beta'])
         }
         self.model = tf.keras.models.load_model(
             self.resume_from, custom_objects=custom_objects)
@@ -288,14 +289,12 @@ class Trainer:
         best_model_path = self.output_dir / 'best_model.keras'
         if best_model_path.exists():
             logger.info(f"Loading best model from {best_model_path}")
-            loss_config = self.config['training']['loss']
             custom_objects = {
-                'tversky_loss': tversky_loss(alpha=loss_config['alpha'], beta=loss_config['beta']),
+                **build_loss_custom_objects(self.config['training']['loss']),
                 'iou_score': iou_score(),
                 'dice_score': dice_score(),
                 'precision_score': precision_score(),
                 'recall_score': recall_score(),
-                'loss': tversky_loss(alpha=loss_config['alpha'], beta=loss_config['beta'])
             }
             best_model = tf.keras.models.load_model(
                 best_model_path, custom_objects=custom_objects)

@@ -10,8 +10,8 @@ data:
   dataset_path: data/dataset
   balanced_path: data/dataset_balanced
   randommix_path: data/dataset_balanced_randommix
-  min_fg_ratio: 0.003
-  desired_pos_ratio: 0.7
+  min_fg_ratio: 0.003 # não especificado no artigo nem no TCC; limiar de engenharia
+  desired_pos_ratio: 0.7 # não especificado no artigo nem no TCC; sem relação com o split 70/30 treino/teste (esse vem do dataset do Zenodo, já particionado por Liu et al.)
   max_train_samples: 20000
   internal_val_fraction: 0.1 # fração do treino separada para validação interna (TCC, Seção 4.2); valid_images/valid_masks é o conjunto de teste, reservado
 
@@ -31,10 +31,13 @@ training:
   learning_rate: 0.0001 # testado entre 1e-3/1e-4/5e-5
   optimizer: rmsprop # testado junto com Adam
   early_stopping_patience: 15
-  reduce_lr_patience: 5
+  reduce_lr_patience: 5 # não especificado no artigo nem no TCC; limiar de engenharia
   loss:
-    name: tversky
-    alpha: 0.7 # penaliza mais falsos negativos
+    name: tversky # tversky | dice | bce — as 3 opções testadas (TCC, Seção 4.3)
+    # alpha/beta: nem o artigo (a comparação de hiperparâmetros de loss está na Tabela
+    # S1 suplementar, não publicada no PDF principal) nem o TCC especificam esses
+    # pesos; 0.7/0.3 penaliza mais falsos negativos e é o valor de engenharia adotado.
+    alpha: 0.7
     beta: 0.3
   randommix: true # Algorithm 1 de Liu et al., Seção 3.2
   randommix_prob: 1.0

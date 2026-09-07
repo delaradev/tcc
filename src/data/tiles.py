@@ -9,7 +9,8 @@ import numpy as np
 import rasterio
 from PIL import Image
 from rasterio import features
-from rasterio.windows import Window, bounds as window_bounds
+from rasterio.windows import Window
+from rasterio.windows import bounds as window_bounds
 from shapely import force_2d
 from shapely.geometry import box
 
@@ -142,7 +143,8 @@ class TileGenerator:
                 width, height)
             total_tiles = n_tiles_x * n_tiles_y
             logger.info(
-                f"Tile grid: {n_tiles_x}x{n_tiles_y} = {total_tiles} tiles, step: {step_x}px, overlap: {self.overlap}px")
+                f"Tile grid: {n_tiles_x}x{n_tiles_y} = {total_tiles} tiles, "
+                f"step: {step_x}px, overlap: {self.overlap}px")
 
             mask_gdf_proj = None
             if self.mask_gdf is not None:
