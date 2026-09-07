@@ -12,12 +12,11 @@ class RandomMixAugmentation:
         mask_neg: np.ndarray,
         img_pos: np.ndarray,
         mask_pos: np.ndarray,
-        tile_size: int = 512,
         crop_size: int = 256
     ) -> Tuple[np.ndarray, np.ndarray]:
-        h, w = tile_size, tile_size
-        y = np.random.randint(0, h - crop_size)
-        x = np.random.randint(0, w - crop_size)
+        h, w = img_neg.shape[:2]
+        y = np.random.randint(0, h - crop_size + 1)
+        x = np.random.randint(0, w - crop_size + 1)
         quad_idx = np.random.randint(0, 4)
 
         if quad_idx == 0:
@@ -33,7 +32,7 @@ class RandomMixAugmentation:
             pos_crop = img_pos[-crop_size:, -crop_size:, :]
             pos_mask_crop = mask_pos[-crop_size:, -crop_size:, :]
 
-        k = np.random.randint(0, 4)
+        k = np.random.randint(1, 4)  # 90/180/270 apenas, conforme Algorithm 1 do artigo
         pos_crop = np.rot90(pos_crop, k=k)
         pos_mask_crop = np.rot90(pos_mask_crop, k=k)
 
@@ -49,8 +48,15 @@ def generate_randommix_dataset(
     original_train_path: str = "data/dataset",
     output_path: str = "data/dataset_randommix",
     min_fg_ratio: float = 0.003,
+    prob: float = 1.0,
+    crop_size: int = 256,
     seed: int = 42,
 ) -> None:
+    """Gera, para cada amostra negativa do treino, uma versão nova mesclada com uma
+    amostra positiva aleatória (Algorithm 1 do artigo). O parâmetro `prob` controla a
+    fração dos negativos que recebe o mix; o restante é copiado sem alteração, de modo
+    que o diretório de saída tenha sempre `len(negatives)` amostras e possa ser somado
+    diretamente às amostras positivas originais para formar o dataset final D_(M+N)."""
     random.seed(seed)
     np.random.seed(seed)
 
@@ -68,13 +74,17 @@ def generate_randommix_dataset(
         mask = np.array(Image.open(msk_path))
         fg = np.sum(mask > 128) / mask.size
         if fg >= min_fg_ratio:
-            positives.append((img_path, msk_path, fg))
-        elif fg == 0.0:
+            positives.append((img_path, msk_path))
+        else:
+            # Mesmo critério de create_balanced_dataset() (dataset_balancer.py): tudo
+            # abaixo de min_fg_ratio é negativo, não apenas fg==0.0 — caso contrário,
+            # tiles com um pouco de SIPC (abaixo do limiar) eram descartados em
+            # silêncio, sem entrar nem como positivo nem como negativo.
             negatives.append((img_path, msk_path))
 
     if not positives or not negatives:
         raise RuntimeError(
-            f"Cannot apply RandomMix: need at least one positive and one pure negative tile. "
+            f"Cannot apply RandomMix: need at least one positive and one negative tile. "
             f"Positives: {len(positives)}, Negatives: {len(negatives)}"
         )
 
@@ -83,18 +93,24 @@ def generate_randommix_dataset(
     out_img_dir.mkdir(parents=True, exist_ok=True)
     out_msk_dir.mkdir(parents=True, exist_ok=True)
 
+    n_to_mix = int(round(len(negatives) * prob))
+    mix_indices = set(random.sample(range(len(negatives)), n_to_mix)) if n_to_mix > 0 else set()
+
+    n_mixed = 0
     for idx, (neg_img_path, neg_mask_path) in enumerate(negatives):
         neg_img = np.array(Image.open(neg_img_path))
         neg_mask = np.array(Image.open(neg_mask_path))[..., np.newaxis]
 
-        pos_idx = random.randint(0, len(positives) - 1)
-        pos_img_path, pos_mask_path, _ = positives[pos_idx]
-        pos_img = np.array(Image.open(pos_img_path))
-        pos_mask = np.array(Image.open(pos_mask_path))[..., np.newaxis]
-
-        new_img, new_mask = RandomMixAugmentation.apply_randommix(
-            neg_img, neg_mask, pos_img, pos_mask
-        )
+        if idx in mix_indices:
+            pos_img_path, pos_mask_path = random.choice(positives)
+            pos_img = np.array(Image.open(pos_img_path))
+            pos_mask = np.array(Image.open(pos_mask_path))[..., np.newaxis]
+            new_img, new_mask = RandomMixAugmentation.apply_randommix(
+                neg_img, neg_mask, pos_img, pos_mask, crop_size=crop_size
+            )
+            n_mixed += 1
+        else:
+            new_img, new_mask = neg_img, neg_mask
 
         new_name = f"randommix_{idx:05d}.png"
         Image.fromarray(new_img.astype(np.uint8)).save(out_img_dir / new_name)
@@ -102,7 +118,7 @@ def generate_randommix_dataset(
             np.uint8)).save(out_msk_dir / new_name)
 
     print(
-        f"RandomMix dataset generated: {len(negatives)} samples at {output_path}")
+        f"RandomMix dataset generated: {n_mixed}/{len(negatives)} mixed samples at {output_path}")
 
 
 if __name__ == "__main__":

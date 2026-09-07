@@ -9,11 +9,12 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from PIL import Image
 
-from src.models.unet import build_unet
+from src.models.unet import build_unet, get_model_summary
 from src.models.losses import tversky_loss
 from src.training.metrics import iou_score, dice_score, precision_score, recall_score
 from src.training.callbacks import PredictionSaver, EpochVisualizationCallback
-from src.data.dataset_balancer import CPICDatasetBuilder
+from src.data.dataset_balancer import CPICDatasetBuilder, create_balanced_dataset, pairs_are_ready
+from src.data.randommix import generate_randommix_dataset
 from src.utils.gpu_utils import configure_gpu, get_gpu_info
 from src.utils.logging import get_logger
 
@@ -47,31 +48,76 @@ class Trainer:
     def prepare_data(self):
         data_config = self.config['data']
         model_config = self.config['model']
+        train_config = self.config['training']
 
         max_samples = data_config.get('max_train_samples', None)
+        seed = self.config['project']['seed']
+
+        balanced_path = Path(data_config['balanced_path'])
+        if not pairs_are_ready(balanced_path, 'train_images', 'train_masks'):
+            logger.info(
+                f"Balanced dataset not found/incomplete at {balanced_path}, building it from {data_config['dataset_path']}")
+            create_balanced_dataset(
+                src_root=data_config['dataset_path'],
+                dst_root=str(balanced_path),
+                min_fg_ratio=data_config['min_fg_ratio'],
+                desired_pos_ratio=data_config['desired_pos_ratio'],
+                seed=seed,
+            )
+
+        randommix_enabled = train_config.get('randommix', False)
+        randommix_source = None
+        if randommix_enabled:
+            randommix_path = Path(data_config.get(
+                'randommix_path', f"{data_config['balanced_path']}_randommix"))
+            if not pairs_are_ready(randommix_path, 'train_images', 'train_masks'):
+                logger.info(f"Generating RandomMix dataset at {randommix_path}")
+                generate_randommix_dataset(
+                    original_train_path=str(balanced_path),
+                    output_path=str(randommix_path),
+                    min_fg_ratio=data_config['min_fg_ratio'],
+                    prob=train_config.get('randommix_prob', 1.0),
+                    seed=seed,
+                )
+            randommix_source = str(randommix_path)
+            logger.info(
+                "RandomMix ativo: treino usará apenas positivos de balanced_path + amostras de randommix_path")
 
         self.dataset_builder = CPICDatasetBuilder(
-            dataset_path=data_config['balanced_path'],
+            dataset_path=str(balanced_path),
             image_size=model_config['img_size'],
-            seed=self.config['project']['seed'],
-            max_train_samples=max_samples
+            seed=seed,
+            max_train_samples=max_samples,
+            positive_only_from_dataset=randommix_enabled,
+            min_fg_ratio=data_config['min_fg_ratio'],
+            extra_train_source=randommix_source,
         )
 
-        train_pairs = self.dataset_builder.load_pairs('train')
-        val_pairs = self.dataset_builder.load_pairs('valid')
+        # Segue a metodologia do TCC: do conjunto de treinamento, 10% é reservado para
+        # validação interna (early stopping / checkpoint / redução de LR). O split
+        # 'valid' do dataset (valid_images/valid_masks, fornecido pelo Zenodo) é o
+        # conjunto de TESTE final e fica isolado — nunca é usado para orientar o
+        # treinamento ou a seleção do melhor checkpoint, apenas na avaliação posterior
+        # (ver post_training_analysis). Usar o próprio conjunto de teste como
+        # validation_data do fit() enviesaria a seleção do modelo (vazamento de dados).
+        internal_val_fraction = data_config.get('internal_val_fraction', 0.1)
+        train_pairs, internal_val_pairs = self.dataset_builder.load_pairs_train_val_split(
+            val_fraction=internal_val_fraction)
+        test_pairs = self.dataset_builder.load_pairs('valid')
         logger.info(
-            f"Train pairs: {len(train_pairs)}, Val pairs: {len(val_pairs)}")
+            f"Train pairs: {len(train_pairs)}, Val pairs (internos, {internal_val_fraction:.0%}): "
+            f"{len(internal_val_pairs)}, Test pairs (reservado): {len(test_pairs)}")
 
-        # Extrai os nomes originais das imagens de validação (ordem do dataset)
-        self.val_filenames = [Path(p[0]).stem for p in val_pairs]
+        # Extrai os nomes originais das imagens de validação interna (ordem do dataset)
+        self.val_filenames = [Path(p[0]).stem for p in internal_val_pairs]
 
-        self.train_ds = self.dataset_builder.build_dataset(
-            split='train',
+        self.train_ds = self.dataset_builder.build_dataset_from_pairs(
+            train_pairs,
             batch_size=self.config['training']['batch_size'],
             training=True
         )
-        self.val_ds = self.dataset_builder.build_dataset(
-            split='valid',
+        self.val_ds = self.dataset_builder.build_dataset_from_pairs(
+            internal_val_pairs,
             batch_size=self.config['training']['batch_size'],
             training=False
         )
@@ -82,9 +128,10 @@ class Trainer:
         self.model = build_unet(
             input_shape=(
                 model_config['img_size'], model_config['img_size'], model_config['input_channels']),
-            base_filters=model_config['unet_base_filters']
+            base_filters=model_config['unet_base_filters'],
+            output_channels=model_config.get('output_channels', 1)
         )
-        logger.info(self.model.summary())
+        logger.info(get_model_summary(self.model))
 
         train_config = self.config['training']
         loss_config = train_config['loss']
@@ -125,15 +172,37 @@ class Trainer:
         self.model = tf.keras.models.load_model(
             self.resume_from, custom_objects=custom_objects)
 
+        self.initial_epoch = self._detect_resume_epoch(Path(self.resume_from))
+
+    def _detect_resume_epoch(self, resume_path: Path) -> int:
+        """Descobre em qual época retomar. best_model.keras/last_model.keras não têm o
+        número da época no nome (ao contrário de um antigo padrão 'epoch_NNN' que este
+        método ainda reconhece por compatibilidade); a fonte confiável é a última linha
+        de training_log.csv (gravado pelo CSVLogger a cada época) no mesmo diretório do
+        checkpoint. Sem isso, um resume sempre reiniciava a contagem de épocas do zero,
+        o que confundia o EarlyStopping/ReduceLROnPlateau e a numeração no TensorBoard."""
         import re
-        match = re.search(r'epoch_(\d+)', self.resume_from)
+        match = re.search(r'epoch_(\d+)', str(resume_path))
         if match:
-            self.initial_epoch = int(match.group(1))
-            logger.info(
-                f"Setting initial_epoch to {self.initial_epoch} based on filename")
-        else:
-            self.initial_epoch = self.config['training'].get('resume_epoch', 0)
-            logger.info(f"Initial epoch set to {self.initial_epoch}")
+            epoch = int(match.group(1))
+            logger.info(f"Initial epoch {epoch} detectado pelo nome do arquivo")
+            return epoch
+
+        log_path = resume_path.parent / 'training_log.csv'
+        if log_path.exists():
+            with open(log_path, 'r') as f:
+                lines = [line for line in f.read().splitlines() if line.strip()]
+            if len(lines) > 1:
+                last_epoch = int(lines[-1].split(',')[0])
+                initial_epoch = last_epoch + 1  # CSVLogger grava a época em base 0
+                logger.info(
+                    f"Initial epoch {initial_epoch} detectado em {log_path}")
+                return initial_epoch
+
+        fallback = self.config['training'].get('resume_epoch', 0)
+        logger.warning(
+            f"Não foi possível detectar a época do checkpoint; usando resume_epoch={fallback} do config")
+        return fallback
 
     def setup_callbacks(self):
         train_config = self.config['training']
@@ -146,6 +215,22 @@ class Trainer:
                 save_best_only=True,
                 verbose=1
             ),
+            # Checkpoint "last": sobrescreve o mesmo arquivo a cada época (não acumula
+            # um arquivo por época) — dá resiliência a interrupções (Colab/Drive) sem
+            # repetir o problema de espaço em disco que levou a remover os snapshots
+            # periódicos anteriormente. Padrão equivalente ao save_last dos frameworks
+            # mais usados (ex.: PyTorch Lightning) combinado com o "salva o melhor" acima.
+            tf.keras.callbacks.ModelCheckpoint(
+                str(self.output_dir / 'last_model.keras'),
+                save_best_only=False,
+                save_freq='epoch',
+                verbose=0
+            ),
+            # Histórico por época gravado incrementalmente (não só ao final do fit()):
+            # sem isso, uma interrupção no meio do treino perdia TODO o histórico de
+            # métricas, já que history.json só era escrito depois que model.fit() retornava.
+            tf.keras.callbacks.CSVLogger(
+                str(self.output_dir / 'training_log.csv'), append=True),
             tf.keras.callbacks.EarlyStopping(
                 monitor='val_iou_score',
                 mode='max',
@@ -153,7 +238,7 @@ class Trainer:
                 restore_best_weights=True
             ),
             tf.keras.callbacks.ReduceLROnPlateau(
-                monitor='val_iou_score ',
+                monitor='val_iou_score',
                 mode='max',
                 factor=0.5,
                 patience=train_config['reduce_lr_patience'],

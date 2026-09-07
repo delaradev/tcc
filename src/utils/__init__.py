@@ -1,9 +1,3 @@
-"""Utility modules"""
-
-from src.utils.gpu_utils import configure_gpu, get_gpu_info, set_gpu_memory_growth
-
-__all__ = [
-    'configure_gpu',
-    'get_gpu_info',
-    'set_gpu_memory_growth'
-]
+"""Utility modules. Sem re-exports: src.utils.logging não depende de TensorFlow e deve
+poder ser importado isoladamente; src.utils.gpu_utils depende. Importe do submódulo
+específico, ex.: `from src.utils.gpu_utils import configure_gpu`."""

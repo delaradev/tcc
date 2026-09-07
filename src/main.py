@@ -41,10 +41,10 @@ def get_predictor(model_path: str, config_path: Optional[str] = None):
         sys.exit(1)
 
 
-def get_exporter(model_path: str, output_path: str):
+def get_exporter(model_path: str, output_path: str, config_path: Optional[str] = None):
     try:
         from src.export.model_exporter import CPICExporter
-        return CPICExporter(model_path, output_path)
+        return CPICExporter(model_path, output_path, config_path)
     except ImportError as e:
         logger.error(f"Failed to import CPICExporter: {e}")
         sys.exit(1)
@@ -64,7 +64,10 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--input', type=str, default=None)
     parser.add_argument('--output', type=str, default=None)
     parser.add_argument('--threshold', type=float, default=0.5)
-    parser.add_argument('--test_split', type=str, default='valid')
+    parser.add_argument('--test_split', type=str, default='valid', choices=['valid'],
+                        help="Dataset split to evaluate. 'valid' maps to the "
+                             "valid_images/valid_masks folder, which is the paper's "
+                             "held-out TEST set (never used during training)")
     parser.add_argument('--device', type=str,
                         choices=['cpu', 'gpu', 'auto'], default='auto')
     return parser.parse_args()
@@ -132,7 +135,7 @@ def run_export(args: argparse.Namespace) -> None:
         logger.error(f"Model not found: {model_path}")
         sys.exit(1)
     output_path = args.output or str(model_path.parent / 'exported')
-    exporter = get_exporter(str(model_path), output_path)
+    exporter = get_exporter(str(model_path), output_path, args.config)
     try:
         exported_paths = exporter.export()
         logger.info("Model exported successfully")

@@ -4,28 +4,38 @@ project:
   seed: 42
 
 data:
-  raw_path: data/raw
+  # dataset_path aponta para o dataset já extraído do Zenodo (train_images/train_masks/
+  # valid_images/valid_masks, ver data_utils.extract_zenodo_dataset). raw_path/tiles_path/
+  # tile_size/overlap não aparecem aqui de propósito: tile_size e overlap são flags de
+  # CLI de src/data/tiles.py (--tile_size/--overlap/--out_dir), não chaves deste config;
+  # nenhum código lia essas chaves quando existiam aqui, dando a falsa impressão de que
+  # configuravam algo.
   dataset_path: data/dataset
-  balanced_path: data/dataset
-  tiles_path: data/tiles
-  tile_size: 512 # conforme artigo (patches 512x512)
-  overlap: 32 # usado apenas na inferência (artigo, seção 3.4)
+  balanced_path: data/dataset_balanced # gerado automaticamente a partir de dataset_path (era igual a dataset_path, e balanceamento nunca era aplicado)
+  randommix_path: data/dataset_balanced_randommix # gerado automaticamente a partir de balanced_path quando training.randommix=true
   min_fg_ratio: 0.003
   desired_pos_ratio: 0.7
   max_train_samples: 20000
+  internal_val_fraction: 0.1 # 10% do treino separado para validação interna (TCC, Seção 4.2). NÃO usa valid_images/valid_masks (Zenodo) — esse é o conjunto de teste final, reservado.
 
 model:
   img_size: 512
-  unet_base_filters: 64 # ← CORREÇÃO: artigo usa 64, 128, 256, 512, 1024 (Fig. 7)
+  unet_base_filters: 64 # escolhido na busca de hiperparâmetros do TCC (Seção 4.3, entre 32/64/128); coincide com Liu et al. (Fig. 7: 64,128,256,512,1024)
   input_channels: 3
   output_channels: 1
 
 training:
-  batch_size: 16 # artigo não especifica; usaram batch pequeno por GPU limitada.
-  epochs: 100 # igual artigo (seção 3.3)
-  learning_rate: 0.0001 # RMSprop learning rate (seção 3.3)
-  optimizer: rmsprop # exatamente o usado no artigo
-  early_stopping_patience: 15 # próximo ao descrito (paciência 12-15)
+  # batch_size/epochs/learning_rate/optimizer/early_stopping_patience abaixo são as
+  # combinações vencedoras da busca de hiperparâmetros descrita no TCC (Seção 4.3),
+  # não valores "copiados do artigo" — o artigo de Liu et al. não especifica batch
+  # size nem menciona early stopping/paciência em nenhum trecho. Alguns valores
+  # coincidem com os do artigo (lr=1e-4, optimizer=RMSprop, epochs=100), mas isso é
+  # resultado da busca do próprio TCC entre as opções testadas, não cópia direta.
+  batch_size: 16 # testados 8/16/32 (TCC, Seção 4.3); treino rodou em GPU A100 80GB, não GPU limitada
+  epochs: 100 # testados 25/50/75/100 (TCC, Seção 4.3); é o teto de épocas, com early stopping
+  learning_rate: 0.0001 # testados 1e-3/1e-4/5e-5 (TCC, Seção 4.3)
+  optimizer: rmsprop # testado junto com Adam (TCC, Seção 4.3)
+  early_stopping_patience: 15 # valor definido no TCC (Seção 4.3); o artigo de Liu et al. não reporta paciência/early stopping
   reduce_lr_patience: 5
   loss:
     name: tversky
@@ -37,10 +47,9 @@ training:
 gpu:
   memory_growth: true
   mixed_precision: true # acelera ~2x na A100, sem perda de qualidade
-  memory_limit_mb: 40960 # 40 GB da A100 – folga total
+  memory_limit_mb: 81920 # ignorado enquanto memory_growth=true (mutuamente exclusivos na mesma GPU); A100 do Colab usada no TCC tem 80 GB
 
-logging:
-  log_dir: logs
-  checkpoint_dir: checkpoints
-  tensorboard_dir: tensorboard
-  save_freq: 5
+# Não há seção `logging:` aqui de propósito: Trainer grava tudo em runs/<run_name>/
+# (best_model.keras, tensorboard/, history.json, config.yaml, analysis/) — caminhos
+# fixos, não configuráveis. Uma seção `logging:` existia aqui antes mas nenhum código
+# a lia; foi removida para não sugerir uma opção que não tinha efeito nenhum.

@@ -1,0 +1,3 @@
+# Dependências de desenvolvimento (testes). Não necessárias para treinar/prever.
+# Uso: pip install -r requirements.txt -r requirements-dev.txt
+pytest>=8.0.0

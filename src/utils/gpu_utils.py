@@ -14,26 +14,34 @@ def configure_gpu(
         print("No GPU found. Using CPU.")
         return False
 
-    try:
-        for gpu in gpus:
-            print(f"GPU found: {gpu}")
+    if memory_growth and memory_limit_mb:
+        print("memory_growth and memory_limit_mb are mutually exclusive on the same "
+              "GPU; ignoring memory_limit_mb and keeping memory_growth enabled.")
+        memory_limit_mb = None
+
+    success = True
+    for gpu in gpus:
+        print(f"GPU found: {gpu}")
+        try:
             if memory_growth:
                 tf.config.experimental.set_memory_growth(gpu, True)
                 print("Memory growth enabled")
-            if memory_limit_mb:
+            elif memory_limit_mb:
                 tf.config.experimental.set_virtual_device_configuration(
                     gpu,
                     [tf.config.experimental.VirtualDeviceConfiguration(
                         memory_limit=memory_limit_mb)]
                 )
                 print(f"Memory limit set to {memory_limit_mb} MB")
-        if mixed_precision:
-            tf.keras.mixed_precision.set_global_policy('mixed_float16')
-            print("Mixed precision enabled (float16)")
-        return True
-    except RuntimeError as e:
-        print(f"GPU configuration error: {e}")
-        return False
+        except RuntimeError as e:
+            print(f"GPU configuration error: {e}")
+            success = False
+
+    if mixed_precision:
+        tf.keras.mixed_precision.set_global_policy('mixed_float16')
+        print("Mixed precision enabled (float16)")
+
+    return success
 
 
 def get_gpu_info() -> dict:

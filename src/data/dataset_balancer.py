@@ -43,6 +43,23 @@ def copy_pair(src_img: Path, src_msk: Path, dst_img: Path, dst_msk: Path) -> Non
     shutil.copy2(src_msk, dst_msk)
 
 
+def pairs_are_ready(dataset_path: Path, img_dirname: str = 'train_images',
+                    mask_dirname: str = 'train_masks') -> bool:
+    """Verifica se um diretório de imagem+máscara está de fato completo, não apenas
+    se existe. Usado para decidir se uma etapa de geração de dataset (balanceamento,
+    RandomMix, download da ANA) pode ser pulada com segurança — uma checagem de
+    apenas `.exists()` no diretório trataria uma execução interrompida no meio
+    (ex.: sessão do Colab derrubada) como "já pronta" e nunca a regeneraria."""
+    dataset_path = Path(dataset_path)
+    img_dir = dataset_path / img_dirname
+    msk_dir = dataset_path / mask_dirname
+    if not img_dir.exists() or not msk_dir.exists():
+        return False
+    img_count = sum(1 for _ in img_dir.glob('*.png'))
+    msk_count = sum(1 for _ in msk_dir.glob('*.png'))
+    return img_count > 0 and img_count == msk_count
+
+
 def create_balanced_dataset(
     src_root: str,
     dst_root: str,
@@ -156,38 +173,92 @@ def create_balanced_dataset(
 
 
 class CPICDatasetBuilder:
-    def __init__(self, dataset_path: str, image_size: int = 512, seed: int = 42, max_train_samples: int = None):
+    def __init__(self, dataset_path: str, image_size: int = 512, seed: int = 42, max_train_samples: int = None,
+                 positive_only_from_dataset: bool = False, min_fg_ratio: float = 0.003,
+                 extra_train_source: str = None):
+        """
+        positive_only_from_dataset: quando True, mantém de `dataset_path` apenas os pares
+            com fg >= min_fg_ratio (positivos). Usado junto com `extra_train_source` para
+            reconstruir D_(M+N) = D_pos U D_new do RandomMix (Algorithm 1 do artigo), em vez
+            de treinar com os negativos puros originais.
+        extra_train_source: diretório adicional (train_images/train_masks) cujos pares são
+            somados ao split 'train' — usado para o dataset gerado pelo RandomMix.
+        """
         self.max_train_samples = max_train_samples
         self.dataset_path = Path(dataset_path)
         self.image_size = image_size
         self.seed = seed
+        self.positive_only_from_dataset = positive_only_from_dataset
+        self.min_fg_ratio = min_fg_ratio
+        self.extra_train_source = Path(
+            extra_train_source) if extra_train_source else None
         self.splits = {
             'train': ('train_images', 'train_masks'),
             'valid': ('valid_images', 'valid_masks'),
         }
+        self._pairs_cache: dict = {}
 
     def load_pairs(self, split: str) -> List[Tuple[str, str]]:
         if split not in self.splits:
             raise ValueError(
                 f"Split must be one of {list(self.splits.keys())}")
+        if split in self._pairs_cache:
+            return self._pairs_cache[split]
         img_dir_name, mask_dir_name = self.splits[split]
         img_dir = self.dataset_path / img_dir_name
         mask_dir = self.dataset_path / mask_dir_name
-        if not img_dir.exists() or not mask_dir.exists():
+
+        pairs = []
+        if img_dir.exists() and mask_dir.exists():
+            for mask_path in sorted(mask_dir.glob('*.png')):
+                img_path = img_dir / mask_path.name
+                if img_path.exists():
+                    pairs.append((str(img_path), str(mask_path)))
+        else:
             logger.warning(
                 f"Directory missing for split {split}: {img_dir} or {mask_dir}")
-            return []
-        pairs = []
-        for mask_path in sorted(mask_dir.glob('*.png')):
-            img_path = img_dir / mask_path.name
-            if img_path.exists():
-                pairs.append((str(img_path), str(mask_path)))
 
-        if split == 'train' and self.max_train_samples is not None and len(pairs) > self.max_train_samples:
+        if split == 'train' and self.positive_only_from_dataset:
+            pairs = [
+                (img_path, mask_path) for img_path, mask_path in pairs
+                if foreground_ratio(read_mask_grayscale(Path(mask_path))) >= self.min_fg_ratio
+            ]
+
+        if split == 'train' and self.extra_train_source is not None:
+            extra_img_dir = self.extra_train_source / 'train_images'
+            extra_msk_dir = self.extra_train_source / 'train_masks'
+            if extra_img_dir.exists() and extra_msk_dir.exists():
+                for mask_path in sorted(extra_msk_dir.glob('*.png')):
+                    img_path = extra_img_dir / mask_path.name
+                    if img_path.exists():
+                        pairs.append((str(img_path), str(mask_path)))
+            else:
+                logger.warning(
+                    f"extra_train_source missing: {self.extra_train_source}")
+
+        if pairs and split == 'train' and self.max_train_samples is not None and len(pairs) > self.max_train_samples:
             rng = random.Random(self.seed)
             pairs = rng.sample(pairs, self.max_train_samples)
 
+        self._pairs_cache[split] = pairs
         return pairs
+
+    def load_pairs_train_val_split(self, val_fraction: float = 0.1) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
+        """Divide o split 'train' em treino efetivo e validação interna, usada durante
+        o treinamento para monitorar desempenho e orientar early stopping / checkpoint /
+        redução de LR — reproduzindo a metodologia do TCC ("Do conjunto de treinamento,
+        separou-se aleatoriamente 10% para validação"). O split 'valid' do dataset (a
+        pasta valid_images/valid_masks, fornecida pelo Zenodo) NÃO entra aqui: ele é o
+        conjunto de teste final e deve ficar completamente isolado do treinamento e da
+        seleção de hiperparâmetros/checkpoint (ver Trainer.post_training_analysis)."""
+        pairs = self.load_pairs('train')
+        if not pairs:
+            return [], []
+        rng = random.Random(self.seed)
+        shuffled = pairs.copy()
+        rng.shuffle(shuffled)
+        n_val = max(1, round(len(shuffled) * val_fraction))
+        return shuffled[n_val:], shuffled[:n_val]
 
     def _load_and_preprocess(self, image_path, mask_path, training=False):
         image = tf.io.read_file(image_path)
@@ -210,13 +281,16 @@ class CPICDatasetBuilder:
         return image, mask
 
     def build_dataset(self, split: str, batch_size: int = 1, training: bool = False) -> tf.data.Dataset:
-        pairs = self.load_pairs(split)
+        return self.build_dataset_from_pairs(self.load_pairs(split), batch_size, training)
+
+    def build_dataset_from_pairs(self, pairs: List[Tuple[str, str]], batch_size: int = 1,
+                                 training: bool = False) -> tf.data.Dataset:
         if not pairs:
-            raise ValueError(f"No image-mask pairs found for split '{split}'")
+            raise ValueError("No image-mask pairs provided")
         ds = tf.data.Dataset.from_tensor_slices(pairs)
         if training:
             ds = ds.shuffle(buffer_size=len(pairs), seed=self.seed, reshuffle_each_iteration=True)
-            
+
         ds = ds.map(lambda img_msk: self._load_and_preprocess(img_msk[0], img_msk[1], training=training),
                     num_parallel_calls=tf.data.AUTOTUNE)
         ds = ds.batch(batch_size)

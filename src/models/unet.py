@@ -15,7 +15,8 @@ def conv_block(x: tf.Tensor, filters: int, name: str) -> tf.Tensor:
     return x
 
 
-def build_unet(input_shape: Tuple[int, int, int] = (512, 512, 3), base_filters: int = 16) -> tf.keras.Model:
+def build_unet(input_shape: Tuple[int, int, int] = (512, 512, 3), base_filters: int = 16,
+              output_channels: int = 1) -> tf.keras.Model:
     inputs = tf.keras.Input(shape=input_shape, name='input')
 
     c1 = conv_block(inputs, base_filters, 'enc1')
@@ -49,7 +50,7 @@ def build_unet(input_shape: Tuple[int, int, int] = (512, 512, 3), base_filters: 
     d1 = conv_block(u1, base_filters, 'dec1')
 
     outputs = tf.keras.layers.Conv2D(
-        1, 1, activation='sigmoid', name='output')(d1)
+        output_channels, 1, activation='sigmoid', name='output')(d1)
 
     model = tf.keras.Model(inputs, outputs, name='unet')
     return model

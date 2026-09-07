@@ -4,7 +4,7 @@ import numpy as np
 from rasterio import features
 from rasterio.transform import from_origin
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union
 import logging
 from shapely.ops import unary_union
 
@@ -14,13 +14,23 @@ logging.basicConfig(level=logging.INFO,
 
 
 class ANAMaskExtractor:
+    # Schema real do shapefile da ANA "Agricultura Irrigada por Pivôs Centrais no
+    # Brasil" (PivosCentrais2019_AtlasIrrigacao2021, ver src/data/amaja.py). As
+    # geometrias já são os polígonos reais de cada pivô (não pontos com raio).
     ANA_COLUMNS = {
-        'id': 'ID_PIVO', 'area': 'AREA_HA', 'state': 'UF',
-        'municipality': 'MUNICIPIO', 'lat': 'LATITUDE', 'lon': 'LONGITUDE', 'radius': 'RAIO_M',
+        'id': 'id', 'area': 'Hectares', 'state_code': 'CD_GEOCUF', 'state_name': 'NM_ESTADO',
+        'municipality_code': 'CD_GEOCMU', 'municipality': 'NM_MUNICIP',
     }
 
-    def __init__(self, ana_path: Path, target_municipality: str = "Salto do Jacuí",
+    def __init__(self, ana_path: Path,
+                 target_municipality: Union[str, List[str]] = "Salto do Jacuí",
                  target_state: str = "RS", target_year: int = 2023, buffer_meters: int = 100):
+        """
+        target_municipality: nome (substring, case-insensitive) ou lista de códigos
+            IBGE de 7 dígitos (ex: os 20 municípios da AMAJA em amaja.AMAJA_MUNICIPALITIES).
+        buffer_meters: usado apenas como fallback para eventuais edições do dataset da
+            ANA que tragam pontos em vez de polígonos (o schema atual já traz polígonos).
+        """
         self.ana_path = Path(ana_path)
         self.target_municipality = target_municipality
         self.target_state = target_state
@@ -32,22 +42,22 @@ class ANAMaskExtractor:
 
     def load_ana_data(self, shapefile: Optional[Path] = None) -> gpd.GeoDataFrame:
         if shapefile is None:
-            shapefile_pattern = f"*{self.target_state}*{self.target_year}*.shp"
-            shapefiles = list(self.ana_path.glob(shapefile_pattern))
-            if not shapefiles:
-                shapefiles = list(self.ana_path.glob(
-                    f"*{self.target_state}*.shp"))
+            shapefiles = list(self.ana_path.glob("*.shp"))
             if not shapefiles:
                 raise FileNotFoundError(
-                    f"No shapefile found for {self.target_state} in {self.ana_path}")
+                    f"No .shp found in {self.ana_path}. Run amaja.download_ana_pivots() first.")
             shapefile = shapefiles[0]
             logger.info(f"Found shapefile: {shapefile.name}")
 
         logger.info(f"Loading ANA data from: {shapefile}")
         self.ana_data = gpd.read_file(shapefile)
-        if self.ANA_COLUMNS['state'] in self.ana_data.columns:
-            self.ana_data = self.ana_data[self.ana_data[self.ANA_COLUMNS['state']]
-                                          == self.target_state]
+
+        state_col = self.ANA_COLUMNS['state_name']
+        if state_col in self.ana_data.columns:
+            state_names = {'RS': 'RIO GRANDE DO SUL'}
+            target = state_names.get(self.target_state.upper(), self.target_state)
+            self.ana_data = self.ana_data[self.ana_data[state_col].str.upper(
+            ) == target.upper()]
             logger.info(
                 f"Filtered by state {self.target_state}: {len(self.ana_data)} pivots")
         logger.info(f"Loaded {len(self.ana_data)} pivots")
@@ -56,22 +66,30 @@ class ANAMaskExtractor:
     def filter_by_municipality(self) -> gpd.GeoDataFrame:
         if self.ana_data is None:
             raise ValueError("Load ANA data first with load_ana_data()")
-        possible_columns = ['MUNICIPIO', 'NM_MUN', 'MUN', 'MUNICIPIO_NM']
-        mun_col = next(
-            (col for col in possible_columns if col in self.ana_data.columns), None)
-        if mun_col is None:
-            logger.warning(
-                f"Municipality column not found. Available: {self.ana_data.columns.tolist()}")
-            return self.ana_data
-        self.filtered_data = self.ana_data[self.ana_data[mun_col].str.contains(
-            self.target_municipality, case=False, na=False)]
-        logger.info(
-            f"Found {len(self.filtered_data)} pivots in {self.target_municipality}")
-        if len(self.filtered_data) == 0:
-            logger.warning(f"No pivots found in {self.target_municipality}")
-            municipalities = self.ana_data[mun_col].unique()[:20]
+
+        code_col = self.ANA_COLUMNS['municipality_code']
+        name_col = self.ANA_COLUMNS['municipality']
+
+        if isinstance(self.target_municipality, (list, tuple, set)):
+            codes = [str(c) for c in self.target_municipality]
+            self.filtered_data = self.ana_data[self.ana_data[code_col].astype(
+                str).isin(codes)]
             logger.info(
-                f"First 20 municipalities in {self.target_state}: {municipalities}")
+                f"Found {len(self.filtered_data)} pivots in {len(codes)} target municipalities")
+        else:
+            if name_col not in self.ana_data.columns:
+                logger.warning(
+                    f"Municipality column not found. Available: {self.ana_data.columns.tolist()}")
+                return self.ana_data
+            self.filtered_data = self.ana_data[self.ana_data[name_col].str.contains(
+                self.target_municipality, case=False, na=False)]
+            logger.info(
+                f"Found {len(self.filtered_data)} pivots in {self.target_municipality}")
+            if len(self.filtered_data) == 0:
+                logger.warning(f"No pivots found in {self.target_municipality}")
+                municipalities = self.ana_data[name_col].unique()[:20]
+                logger.info(
+                    f"First 20 municipalities in {self.target_state}: {municipalities}")
         return self.filtered_data
 
     def create_pivot_mask(self, reference_raster: Optional[Path] = None,
@@ -80,17 +98,32 @@ class ANAMaskExtractor:
         if self.filtered_data is None or len(self.filtered_data) == 0:
             raise ValueError(
                 "No filtered data. Run filter_by_municipality() first.")
+        from shapely import force_2d
+
+        # As geometrias da ANA vêm em EPSG:4674 (graus); é preciso reprojetar para o
+        # CRS métrico de destino ANTES de rasterizar, senão o transform (em metros)
+        # fica completamente desalinhado com as coordenadas (em graus).
+        target_crs = output_crs
+        if reference_raster and Path(reference_raster).exists():
+            with rasterio.open(reference_raster) as src:
+                target_crs = src.crs
+        filtered_metric = self.filtered_data.to_crs(target_crs)
+        # Substitui filtered_data pela versão reprojetada: a partir daqui, bounds e
+        # demais consultas ficam consistentes com o CRS métrico da máscara/raster.
+        self.filtered_data = filtered_metric
+
         geometries = []
-        for _, row in self.filtered_data.iterrows():
+        for _, row in filtered_metric.iterrows():
             geom = row.geometry
             if geom.geom_type == 'Point':
-                radius = row.get(self.ANA_COLUMNS['radius'], 100)
-                geometries.append(geom.buffer(radius))
+                # Fallback para eventuais edições do dataset da ANA que tragam
+                # pontos em vez de polígonos (o schema atual já traz polígonos).
+                geometries.append(geom.buffer(self.buffer_meters))
             else:
-                geometries.append(geom)
+                geometries.append(force_2d(geom))
         union_geom = unary_union(geometries)
 
-        if reference_raster and reference_raster.exists():
+        if reference_raster and Path(reference_raster).exists():
             with rasterio.open(reference_raster) as src:
                 bounds = src.bounds
                 transform = src.transform
@@ -172,8 +205,6 @@ def validate_with_ana(ana_path: Path, landsat_tile: Path, municipality: str = "S
     for idx, row in extractor.filtered_data.iterrows():
         info = {'id': row.get(extractor.ANA_COLUMNS['id'], idx), 'area_ha': row.get(extractor.ANA_COLUMNS['area'], 0),
                 'geometry_type': row.geometry.geom_type}
-        if extractor.ANA_COLUMNS['radius'] in row:
-            info['radius_m'] = row[extractor.ANA_COLUMNS['radius']]
         pivot_info.append(info)
 
     result = {
