@@ -14,6 +14,7 @@ data:
   desired_pos_ratio: 0.7 # não especificado no artigo nem no TCC; sem relação com o split 70/30 treino/teste (esse vem do dataset do Zenodo, já particionado por Liu et al.)
   max_train_samples: 20000
   internal_val_fraction: 0.1 # fração do treino separada para validação interna (early stopping/checkpoint); valid_images/valid_masks é o conjunto de teste, reservado
+  excluded_grid_ids: [] # células de grade do dataset do Liu (ex.: "I-3") com sobreposição geográfica confirmada com a AMAJA — ver src/data/geo_leakage_check.py
 
 model:
   img_size: 512
@@ -36,7 +37,9 @@ training:
     name: tversky # tversky | dice | bce — as 3 funções de perda suportadas
     # alpha/beta: nem o artigo (a comparação de hiperparâmetros de loss está na Tabela
     # S1 suplementar, não publicada no PDF principal) nem o TCC especificam esses
-    # pesos; 0.7/0.3 penaliza mais falsos negativos e é o valor de engenharia adotado.
+    # pesos. Em losses.py, alpha pondera FP e beta pondera FN (tversky = tp / (tp +
+    # alpha*fp + beta*fn)); 0.7/0.3 penaliza mais falsos positivos (favorece precisão
+    # sobre recall) e é o valor de engenharia adotado.
     alpha: 0.7
     beta: 0.3
   randommix: true # Algorithm 1 de Liu et al., Seção 3.2

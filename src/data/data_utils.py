@@ -35,7 +35,7 @@ def extract_zenodo_dataset(zip_path: Optional[Path] = None, extract_to: Optional
 
 def verify_dataset_structure(dataset_path: Path = Path("data/dataset")) -> bool:
     required_dirs = ['train_images', 'train_masks',
-                     'valid_images', 'valid_masks']
+                     'valid_data/valid_images', 'valid_data/valid_masks']
     logger.info("Verifying dataset structure:")
     all_exist = True
     for dir_name in required_dirs:
@@ -49,8 +49,8 @@ def verify_dataset_structure(dataset_path: Path = Path("data/dataset")) -> bool:
         logger.info("Dataset structure is correct.")
         train_images = len(list((dataset_path / 'train_images').glob('*.png')))
         train_masks = len(list((dataset_path / 'train_masks').glob('*.png')))
-        valid_images = len(list((dataset_path / 'valid_images').glob('*.png')))
-        valid_masks = len(list((dataset_path / 'valid_masks').glob('*.png')))
+        valid_images = len(list((dataset_path / 'valid_data/valid_images').glob('*.png')))
+        valid_masks = len(list((dataset_path / 'valid_data/valid_masks').glob('*.png')))
         logger.info(
             f"Sample counts: train_images={train_images}, train_masks={train_masks}, "
             f"valid_images={valid_images}, valid_masks={valid_masks}")
@@ -72,8 +72,8 @@ def get_dataset_info() -> dict:
         info['dataset'] = {
             'train_images': len(list(dataset_path.glob('train_images/*.png'))),
             'train_masks': len(list(dataset_path.glob('train_masks/*.png'))),
-            'valid_images': len(list(dataset_path.glob('valid_images/*.png'))),
-            'valid_masks': len(list(dataset_path.glob('valid_masks/*.png'))),
+            'valid_images': len(list(dataset_path.glob('valid_data/valid_images/*.png'))),
+            'valid_masks': len(list(dataset_path.glob('valid_data/valid_masks/*.png'))),
         }
     if balanced_path.exists():
         info['balanced'] = {

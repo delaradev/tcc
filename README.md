@@ -9,7 +9,7 @@ Municípios do Alto Jacuí, RS) — objeto do TCC deste repositório.
   in Brazil during the 1985–2021 period with cloud platforms and deep learning*. ISPRS
   Journal of Photogrammetry and Remote Sensing, 205, 227–245.
   <https://doi.org/10.1016/j.isprsjprs.2023.10.007>
-- Dataset de treinamento: <https://zenodo.org/records/10046320>
+- Dataset de treinamento: <https://zenodo.org/records/10035904>
 
 ---
 
@@ -36,7 +36,7 @@ tcc_code/
 │   ├── config.yaml            # Config principal (treino em cima do dataset de Liu et al.)
 │   └── config_amaja.yaml      # Config para validar o modelo treinado na base da AMAJA
 │
-├── docs/                      # Artigo-base, TCC e material de apoio (PDFs)
+├── article/                    # PDF do artigo-base (Liu et al. 2023)
 │
 ├── notebooks/
 │   └── cpic_training.py       # Driver do treino no Colab (exportado do notebook oficial)
@@ -50,6 +50,7 @@ tcc_code/
 │   │   ├── tiles.py            # Recorte de GeoTIFF em tiles 512x512 (+ máscara pareada)
 │   │   ├── amaja.py            # Municípios/AOI da AMAJA + download e filtro de pivôs ANA
 │   │   ├── gee_export_amaja.py # Exportação Landsat via Google Earth Engine (roda no Colab)
+│   │   ├── geo_leakage_check.py # Verifica sobreposição geográfica Liu x AMAJA por conteúdo
 │   │   └── review_tiles.py     # Apoio à validação humana das máscaras da AMAJA
 │   ├── models/
 │   │   ├── unet.py             # Arquitetura U-Net (Fig. 7 do artigo)
@@ -123,7 +124,9 @@ GPU NVIDIA presente; suporte a GPU nessa configuração exige WSL2 ou o plugin D
 
 ### 1. Obter o dataset
 Baixe `dataset.zip` do Zenodo (link no topo deste README) e extraia em `data/dataset/`
-(estrutura esperada: `train_images/`, `train_masks/`, `valid_images/`, `valid_masks/`).
+(estrutura real do zip: `train_images/`, `train_masks/`, `valid_data/valid_images/`,
+`valid_data/valid_masks/` — o par de validação/teste fica um nível mais aninhado que
+o par de treino).
 
 ### 2. Treinar
 ```bash
@@ -189,7 +192,36 @@ export_amaja_composite(aoi_gpkg='data/raw/amaja/amaja_aoi.gpkg', year=2023)
 ```
 Baixe o `.tif` exportado do Google Drive para `data/raw/amaja/landsat_amaja_2023.tif`.
 
-### 5. Tiles pareados (imagem + máscara)
+### 5. Verificar vazamento geográfico com o dataset de treino (opcional, recomendado)
+O dataset de Liu et al. cobre todo o Brasil, incluindo o RS, mas não traz nenhum
+metadado geográfico por amostra — só um ID de célula de grade no nome do arquivo (ex.:
+`I-3_2005_000000_1.png`), sem chave pública que traduza esse ID para coordenadas. Para
+verificar se alguma célula do dataset se sobrepõe à área da AMAJA, gera-se uma
+composição de referência da AMAJA nos mesmos anos do dataset do Liu (2005/2010/2017) e
+compara-se por correlação cruzada de conteúdo:
+```python
+from src.data.gee_export_amaja import export_amaja_composite
+for year in (2005, 2010, 2017):
+    export_amaja_composite(
+        aoi_gpkg='data/raw/amaja/amaja_aoi.gpkg', year=year,
+        file_prefix=f'landsat_cpic_amaja_{year}',
+    )
+```
+Baixe os 3 `.tif` do Drive para `data/raw/amaja/reference_composites/`, depois:
+```bash
+python -m src.data.geo_leakage_check generate \
+    --dataset data/dataset.zip \
+    --reference_dir data/raw/amaja/reference_composites \
+    --output_dir data/validation/geo_leakage
+```
+Revise `data/validation/geo_leakage/match_*.png` (candidato à esquerda, recorte da
+referência à direita) começando pelas de maior `score` no `geo_leakage_manifest.csv`, e
+preencha `decision` (`confirm`/`reject`). Grid IDs confirmados vão em
+`data.excluded_grid_ids` no `config.yaml` — `create_balanced_dataset` os exclui do
+treino automaticamente na próxima execução (apaga `data/dataset_balanced/` antes de
+retreinar para que a exclusão tenha efeito).
+
+### 6. Tiles pareados (imagem + máscara)
 ```bash
 python src/data/tiles.py \
     --tif_path data/raw/amaja/landsat_amaja_2023.tif \
@@ -199,7 +231,7 @@ python src/data/tiles.py \
     --normalize percentile
 ```
 
-### 6. Validação humana das máscaras
+### 7. Validação humana das máscaras
 ```bash
 python src/data/review_tiles.py generate \
     --images_dir data/dataset_amaja/valid_images \
@@ -218,7 +250,7 @@ python src/data/review_tiles.py apply \
     --output_masks_dir data/dataset_amaja_final/valid_masks
 ```
 
-### 7. Avaliar a generalização geográfica
+### 8. Avaliar a generalização geográfica
 ```bash
 python src/main.py --mode validate --config config/config_amaja.yaml \
     --model runs/<run>/best_model.keras

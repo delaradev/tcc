@@ -68,6 +68,7 @@ class Trainer:
                 min_fg_ratio=data_config['min_fg_ratio'],
                 desired_pos_ratio=data_config['desired_pos_ratio'],
                 seed=seed,
+                excluded_grid_ids=data_config.get('excluded_grid_ids'),
             )
 
         randommix_enabled = train_config.get('randommix', False)

@@ -66,7 +66,14 @@ def create_balanced_dataset(
     desired_pos_ratio: float = 0.7,
     seed: int = 42,
     use_all_positives: bool = True,
+    excluded_grid_ids: Optional[List[str]] = None,
 ) -> None:
+    """
+    excluded_grid_ids: prefixos de célula de grade do dataset do Liu et al. (ex.: "I-3",
+        de "I-3_2005_000000_1.png") a excluir do treino por sobreposição geográfica
+        confirmada com a área de validação da AMAJA — ver
+        src/data/geo_leakage_check.py para como essa lista é determinada.
+    """
     random.seed(seed)
     np.random.seed(seed)
 
@@ -88,6 +95,14 @@ def create_balanced_dataset(
     mask_files = sorted([p for p in msk_dir.iterdir()
                         if p.suffix.lower() in MSK_EXTS])
     logger.info(f"Total masks: {len(mask_files)}")
+
+    if excluded_grid_ids:
+        excluded_prefixes = tuple(f"{gid}_" for gid in excluded_grid_ids)
+        before = len(mask_files)
+        mask_files = [p for p in mask_files if not p.name.startswith(excluded_prefixes)]
+        logger.info(
+            f"Excluded {before - len(mask_files)} masks matching grid_ids "
+            f"{excluded_grid_ids} (geographic overlap with AMAJA)")
 
     positives = []
     negatives = []
